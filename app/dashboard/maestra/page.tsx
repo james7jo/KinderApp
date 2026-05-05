@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import LogoutButton from "@/components/ui/LogoutButton";
 import {
   BookOpen,
   Users,
@@ -35,7 +36,7 @@ export default async function MaestraPage() {
     .select(`cursos ( id, nombre, codigo, alumnos ( id ) )`)
     .eq("maestra_id", user.id);
 
-  const cursos = misCursos?.map((mc: any) => mc.cursos) ?? [];
+  const cursos = misCursos?.map((mc: any) => mc.cursos).filter(Boolean) ?? [];
   const totalAlumnos = cursos.reduce(
     (acc: number, c: any) => acc + (c?.alumnos?.length ?? 0),
     0,
@@ -105,10 +106,9 @@ export default async function MaestraPage() {
         </nav>
 
         <div className="p-4 border-t border-gray-100">
-          <button className="flex items-center gap-3 px-4 py-3 rounded-2xl text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all text-sm font-bold w-full">
-            <LogOut size={18} />
-            Cerrar sesión
-          </button>
+          <div className="p-4 border-t border-gray-100">
+            <LogoutButton />
+          </div>
         </div>
       </aside>
 

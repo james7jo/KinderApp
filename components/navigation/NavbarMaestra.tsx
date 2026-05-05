@@ -43,13 +43,11 @@ export default function NavbarMaestra() {
                 key={item.href}
                 href={item.href}
                 className={`flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all ${
-                  isActive
-                    ? "text-orange-500"
-                    : "text-gray-300 hover:text-gray-400"
+                  isActive ? "text-orange-500" : "text-gray-300"
                 }`}
               >
                 <div
-                  className={`p-1.5 rounded-xl transition-all ${isActive ? "bg-orange-50" : ""}`}
+                  className={`p-1.5 rounded-xl ${isActive ? "bg-orange-50" : ""}`}
                 >
                   <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
                 </div>

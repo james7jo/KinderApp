@@ -15,8 +15,9 @@ import {
 export default async function CursoMaestraPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const supabase = await createClient();
   const {
     data: { user },
@@ -26,13 +27,13 @@ export default async function CursoMaestraPage({
   const { data: curso } = await supabase
     .from("cursos")
     .select("id, nombre, codigo")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   const { data: alumnos } = await supabase
     .from("alumnos")
     .select("id, nombre, apellido, foto_url")
-    .eq("curso_id", params.id);
+    .eq("curso_id", id);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -47,42 +48,42 @@ export default async function CursoMaestraPage({
 
   const modulos = [
     {
-      href: `/dashboard/maestra/curso/${params.id}/alumnos`,
+      href: `/dashboard/maestra/curso/${id}/alumnos`,
       label: "Lista de alumnos",
       desc: `${totalAlumnos} estudiantes`,
       icon: Users,
       color: "bg-orange-50 text-orange-500",
     },
     {
-      href: `/dashboard/maestra/curso/${params.id}/bitacora`,
+      href: `/dashboard/maestra/curso/${id}/bitacora`,
       label: "Bitácora diaria",
       desc: `${asistenciaHoy} de ${totalAlumnos} completadas hoy`,
       icon: ClipboardList,
       color: "bg-violet-50 text-violet-500",
     },
     {
-      href: `/dashboard/maestra/curso/${params.id}/avisos`,
+      href: `/dashboard/maestra/curso/${id}/avisos`,
       label: "Avisos",
       desc: "Comunicados al curso",
       icon: Bell,
       color: "bg-sky-50 text-sky-500",
     },
     {
-      href: `/dashboard/maestra/curso/${params.id}/actividades`,
+      href: `/dashboard/maestra/curso/${id}/actividades`,
       label: "Actividades",
       desc: "Eventos y cuotas",
       icon: Calendar,
       color: "bg-green-50 text-green-500",
     },
     {
-      href: `/dashboard/maestra/curso/${params.id}/camara`,
+      href: `/dashboard/maestra/curso/${id}/camara`,
       label: "Cámaras",
       desc: "Monitoreo en vivo",
       icon: Video,
       color: "bg-red-50 text-red-500",
     },
     {
-      href: `/dashboard/maestra/curso/${params.id}/mesa-directiva`,
+      href: `/dashboard/maestra/curso/${id}/mesa-directiva`,
       label: "Mesa directiva",
       desc: "Organización de padres",
       icon: Users,
@@ -134,7 +135,7 @@ export default async function CursoMaestraPage({
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-black text-gray-900 text-sm">Alumnos</h2>
               <Link
-                href={`/dashboard/maestra/curso/${params.id}/alumnos`}
+                href={`/dashboard/maestra/curso/${id}/alumnos`}
                 className="text-orange-500 text-xs font-bold"
               >
                 Ver todos →

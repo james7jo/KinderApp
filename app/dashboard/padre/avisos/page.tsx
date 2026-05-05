@@ -3,36 +3,34 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
-export default async function AvisosPadrePage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
+export default async function AvisosPadreGeneralPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
 
-  const { data: alumno } = await supabase
-    .from("alumnos")
-    .select("nombre, apellido, curso_id")
-    .eq("id", id)
-    .single();
+  // Obtener todos los hijos del padre
+  const { data: tutores } = await supabase
+    .from("tutores")
+    .select(`alumno_id, alumnos(nombre, apellido, curso_id)`)
+    .eq("user_id", user.id);
 
-  // Avisos globales del curso + avisos privados para este padre
+  // Obtener avisos de todos los cursos de sus hijos
+  const cursoIds =
+    tutores?.map((t: any) => t.alumnos?.curso_id).filter(Boolean) ?? [];
+
   const { data: avisosGlobales } = await supabase
     .from("avisos")
     .select("*")
-    .eq("curso_id", alumno?.curso_id)
+    .in("curso_id", cursoIds.length > 0 ? cursoIds : ["none"])
     .eq("tipo", "global")
     .order("created_at", { ascending: false });
 
   const { data: avisosPrivados } = await supabase
     .from("avisos")
     .select("*")
-    .eq("curso_id", alumno?.curso_id)
+    .in("curso_id", cursoIds.length > 0 ? cursoIds : ["none"])
     .eq("tipo", "privado")
     .eq("destinatario_id", user.id)
     .order("created_at", { ascending: false });
@@ -44,19 +42,9 @@ export default async function AvisosPadrePage({
 
   return (
     <div className="min-h-screen bg-gray-50 font-nunito pb-28">
-      <div className="bg-white border-b border-gray-100 px-5 py-4 sticky top-0 z-30 flex items-center gap-3">
-        <Link
-          href={`/dashboard/padre/hijo/${id}`}
-          className="w-9 h-9 bg-gray-50 rounded-xl flex items-center justify-center"
-        >
-          <ArrowLeft size={18} className="text-gray-600" />
-        </Link>
-        <div>
-          <p className="text-xs text-gray-400 font-bold">
-            {alumno?.nombre} {alumno?.apellido}
-          </p>
-          <h1 className="text-lg font-black text-gray-900">Avisos</h1>
-        </div>
+      <div className="bg-white border-b border-gray-100 px-5 py-4 sticky top-0 z-30">
+        <p className="text-xs text-gray-400 font-bold">PADRE</p>
+        <h1 className="text-lg font-black text-gray-900">Avisos</h1>
       </div>
 
       <div className="px-5 pt-6 max-w-lg mx-auto">
@@ -99,7 +87,6 @@ export default async function AvisosPadrePage({
                         {fecha}
                       </p>
                     </div>
-
                     <h3 className="font-black text-gray-900 text-base mb-2">
                       {aviso.titulo}
                     </h3>
@@ -107,7 +94,6 @@ export default async function AvisosPadrePage({
                       {aviso.contenido}
                     </p>
 
-                    {/* Fecha del evento */}
                     {aviso.fecha && (
                       <div className="mt-4 bg-orange-50 rounded-xl p-3 flex items-center gap-3">
                         <div className="w-12 h-12 bg-orange-500 rounded-xl flex items-center justify-center shrink-0">
