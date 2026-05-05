@@ -110,7 +110,7 @@ export default async function CursosPage() {
 
                   <div className="px-5 pb-5">
                     <Link
-                      href={`/dashboard/director/curso/${curso.id}`}
+                      href={`/dashboard/director/cursos/${curso.id}`}
                       className="w-full flex items-center justify-center gap-2 bg-gray-50 hover:bg-orange-50 hover:text-orange-600 text-gray-500 text-sm font-bold py-2.5 rounded-xl transition-all"
                     >
                       Ver detalle →
