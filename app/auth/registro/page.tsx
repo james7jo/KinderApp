@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
 
 type Step = "rol" | "codigo" | "cuenta";
 
@@ -32,27 +31,27 @@ export default function RegistroPage() {
   const [codigo, setCodigo] = useState("");
   const [colegioId, setColegioId] = useState("");
   const [cursoId, setCursoId] = useState("");
+  const [invitacionId, setInvitacionId] = useState("");
+  const [alumnoInvitadoId, setAlumnoInvitadoId] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
   const supabase = createClient();
+  const [relacionInvitado, setRelacionInvitado] = useState("Madre");
 
   async function verificarCodigo() {
     setLoading(true);
     setError("");
 
     if (rol === "director") {
-      // Director no necesita código, crea su propio colegio
       setStep("cuenta");
       setLoading(false);
       return;
     }
 
     if (rol === "maestra") {
-      // Maestra usa código de colegio
       const { data, error } = await supabase
         .from("colegios")
         .select("id")
@@ -71,7 +70,26 @@ export default function RegistroPage() {
     }
 
     if (rol === "padre") {
-      // Padre usa código de curso
+      // Primero verificar si es código de invitación
+      const { data: invitacion } = await supabase
+        .from("invitaciones_tutor")
+        .select("id, alumno_id, alumnos(curso_id, colegio_id)")
+        .eq("codigo", codigo.trim().toLowerCase())
+        .eq("usado", false)
+        .gte("expires_at", new Date().toISOString())
+        .single();
+
+      if (invitacion) {
+        setColegioId((invitacion.alumnos as any)?.colegio_id);
+        setCursoId((invitacion.alumnos as any)?.curso_id);
+        setInvitacionId(invitacion.id);
+        setAlumnoInvitadoId(invitacion.alumno_id);
+        setStep("cuenta");
+        setLoading(false);
+        return;
+      }
+
+      // Si no es invitación, verificar código de curso normal
       const { data, error } = await supabase
         .from("cursos")
         .select("id, colegio_id")
@@ -96,7 +114,6 @@ export default function RegistroPage() {
     setLoading(true);
     setError("");
 
-    // 1. Crear usuario
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
@@ -108,10 +125,8 @@ export default function RegistroPage() {
       return;
     }
 
-    // 2. Login inmediato para tener sesión activa
     await supabase.auth.signInWithPassword({ email, password });
 
-    // 3. Crear colegio y perfil con sesión activa
     const { error: fnError } = await supabase.rpc("handle_new_director", {
       user_id: authData.user.id,
       nombre_director: fullName,
@@ -125,10 +140,23 @@ export default function RegistroPage() {
       return;
     }
 
-    // 4. Pequeña espera para que Supabase procese
+    // Si viene de invitación, vincular al alumno y marcar como usada
+    if (invitacionId && alumnoInvitadoId) {
+      await supabase.from("tutores").insert({
+        user_id: authData.user.id,
+        alumno_id: alumnoInvitadoId,
+        full_name: fullName,
+        relacion: relacionInvitado.toLowerCase(),
+        es_principal: false,
+      });
+      await supabase
+        .from("invitaciones_tutor")
+        .update({ usado: true })
+        .eq("id", invitacionId);
+    }
+
     await new Promise((resolve) => setTimeout(resolve, 800));
 
-    // Verificar que el perfil existe antes de redirigir
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
@@ -148,6 +176,7 @@ export default function RegistroPage() {
     else if (profile.role === "padre")
       window.location.replace("/dashboard/padre");
   }
+
   return (
     <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-50 to-white px-4 py-8">
       <div className="w-full max-w-sm">
@@ -183,7 +212,6 @@ export default function RegistroPage() {
                 </div>
               </button>
             ))}
-
             <button
               onClick={() =>
                 rol === "director" ? setStep("cuenta") : setStep("codigo")
@@ -202,9 +230,8 @@ export default function RegistroPage() {
             <p className="text-sm text-gray-600">
               {rol === "maestra"
                 ? "🔑 Pedile el código del colegio al director"
-                : "🔑 Pedile el código del aula a la maestra"}
+                : "🔑 Pedile el código del aula a la maestra o el código de invitación"}
             </p>
-
             <input
               type="text"
               placeholder="Ej: ab3f92c1"
@@ -212,13 +239,11 @@ export default function RegistroPage() {
               onChange={(e) => setCodigo(e.target.value)}
               className="border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 text-center tracking-widest font-mono uppercase"
             />
-
             {error && (
               <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
                 <p className="text-red-600 text-sm">{error}</p>
               </div>
             )}
-
             <button
               onClick={verificarCodigo}
               disabled={!codigo || loading}
@@ -226,7 +251,6 @@ export default function RegistroPage() {
             >
               {loading ? "Verificando..." : "Verificar código"}
             </button>
-
             <button
               onClick={() => setStep("rol")}
               className="text-sm text-gray-400 hover:text-gray-600 text-center"
@@ -240,6 +264,31 @@ export default function RegistroPage() {
         {step === "cuenta" && (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <form onSubmit={handleRegistro} className="flex flex-col gap-4">
+              {invitacionId && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">
+                    Tu relación con el niño
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {["Madre", "Abuelo/a", "Tutor legal", "Tío/a", "Otro"].map(
+                      (r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setRelacionInvitado(r)}
+                          className={`py-2 rounded-xl text-xs font-bold transition-all ${
+                            relacionInvitado === r
+                              ? "bg-blue-600 text-white"
+                              : "bg-gray-50 text-gray-500"
+                          }`}
+                        >
+                          {r}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
                   Nombre completo
@@ -280,13 +329,11 @@ export default function RegistroPage() {
                   minLength={6}
                 />
               </div>
-
               {error && (
                 <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
                   <p className="text-red-600 text-sm">{error}</p>
                 </div>
               )}
-
               <button
                 type="submit"
                 disabled={loading}
@@ -295,7 +342,6 @@ export default function RegistroPage() {
                 {loading ? "Creando cuenta..." : "Crear cuenta"}
               </button>
             </form>
-
             <button
               onClick={() =>
                 rol === "director" ? setStep("rol") : setStep("codigo")
