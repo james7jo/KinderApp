@@ -1,51 +1,82 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import CopyButton from "@/components/ui/CopyButton";
 import {
   Users,
   Video,
   BookOpen,
   GraduationCap,
-  MapPin,
   ArrowRight,
-  LayoutDashboard,
-  LogOut,
-  Phone,
   TrendingUp,
   ClipboardList,
+  Bell,
+  BarChart2,
+  ChevronRight,
 } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
 
-export default async function DirectorPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/auth/login");
+type Profile = { full_name: string; colegio_id: string };
+type Colegio = {
+  id: string;
+  nombre: string;
+  direccion?: string;
+  telefono?: string;
+  codigo_maestra?: string;
+  codigo_padre?: string;
+};
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, colegio_id")
-    .eq("id", user.id)
-    .single();
-  const { data: colegio } = await supabase
-    .from("colegios")
-    .select("*")
-    .eq("id", profile?.colegio_id)
-    .single();
-  const { data: cursos } = await supabase
-    .from("cursos")
-    .select("id, nombre")
-    .eq("colegio_id", profile?.colegio_id);
-  const { data: maestras } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("colegio_id", profile?.colegio_id)
-    .eq("role", "maestra");
-  const { data: alumnos } = await supabase
-    .from("alumnos")
-    .select("id")
-    .eq("colegio_id", profile?.colegio_id);
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="text-[11px] font-bold text-gray-500 bg-white border border-gray-200 rounded-lg px-3 py-1.5 hover:border-orange-300 hover:text-orange-600 transition-all whitespace-nowrap"
+    >
+      {copied ? "✓ Copiado" : "Copiar"}
+    </button>
+  );
+}
+
+function CustomTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl shadow-lg px-3 py-2 text-xs font-bold">
+      <p className="text-gray-500 mb-1">{label}</p>
+      <p className="text-orange-500">Presentes: {payload[0]?.value ?? 0}</p>
+      <p className="text-gray-300">Ausentes: {payload[1]?.value ?? 0}</p>
+    </div>
+  );
+}
+
+export default function DirectorPage() {
+  const supabase = createClient();
+  const router = useRouter();
+
+  const [colegio, setColegio] = useState<Colegio | null>(null);
+  const [cursosCount, setCursosCount] = useState(0);
+  const [maestrasCount, setMaestrasCount] = useState(0);
+  const [alumnosCount, setAlumnosCount] = useState(0);
+  const [weekData, setWeekData] = useState<
+    { day: string; presentes: number; ausentes: number }[]
+  >([]);
+  const [loading, setLoading] = useState(true);
 
   const today = new Date().toLocaleDateString("es-BO", {
     weekday: "long",
@@ -54,172 +85,325 @@ export default async function DirectorPage() {
     year: "numeric",
   });
 
-  const navLinks = [
-    { href: "/dashboard/director", label: "Inicio", icon: LayoutDashboard },
-    { href: "/dashboard/director/cursos", label: "Cursos", icon: BookOpen },
-    { href: "/dashboard/director/maestras", label: "Maestras", icon: Users },
-    { href: "/dashboard/director/camaras", label: "Cámaras", icon: Video },
-  ];
+  useEffect(() => {
+    async function load() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.replace("/auth/login");
+        return;
+      }
+
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("full_name, colegio_id")
+        .eq("id", user.id)
+        .single();
+
+      const { data: col } = await supabase
+        .from("colegios")
+        .select("*")
+        .eq("id", prof?.colegio_id)
+        .single();
+      setColegio(col);
+
+      const [{ data: cursos }, { data: maestras }, { data: alumnos }] =
+        await Promise.all([
+          supabase
+            .from("cursos")
+            .select("id")
+            .eq("colegio_id", prof?.colegio_id),
+          supabase
+            .from("profiles")
+            .select("id")
+            .eq("colegio_id", prof?.colegio_id)
+            .eq("role", "maestra"),
+          supabase
+            .from("alumnos")
+            .select("id")
+            .eq("colegio_id", prof?.colegio_id),
+        ]);
+
+      setCursosCount(cursos?.length ?? 0);
+      setMaestrasCount(maestras?.length ?? 0);
+      setAlumnosCount(alumnos?.length ?? 0);
+
+      // Últimos 5 días hábiles
+      const dias = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+      const fechas: string[] = [];
+      const d = new Date();
+      while (fechas.length < 5) {
+        if (d.getDay() !== 0 && d.getDay() !== 6)
+          fechas.unshift(d.toISOString().split("T")[0]);
+        d.setDate(d.getDate() - 1);
+      }
+
+      const alumnosIds = (alumnos ?? []).map((a: any) => a.id);
+      if (alumnosIds.length > 0) {
+        const { data: asistencias } = await supabase
+          .from("asistencias")
+          .select("fecha, presente, alumno_id")
+          .in("alumno_id", alumnosIds)
+          .in("fecha", fechas);
+
+        setWeekData(
+          fechas.map((fecha) => {
+            const del_dia = (asistencias ?? []).filter(
+              (a: any) => a.fecha === fecha,
+            );
+            return {
+              day: dias[new Date(fecha + "T12:00:00").getDay()],
+              presentes: del_dia.filter((a: any) => a.presente).length,
+              ausentes: del_dia.filter((a: any) => !a.presente).length,
+            };
+          }),
+        );
+      } else {
+        setWeekData(
+          fechas.map((fecha) => ({
+            day: dias[new Date(fecha + "T12:00:00").getDay()],
+            presentes: 0,
+            ausentes: 0,
+          })),
+        );
+      }
+
+      setLoading(false);
+    }
+    load();
+  }, []);
 
   const stats = [
     {
       label: "Estudiantes",
-      value: alumnos?.length ?? 0,
+      value: alumnosCount,
       icon: Users,
-      gradient: "from-orange-400 to-orange-500",
-      light: "bg-orange-50 text-orange-500",
+      bg: "bg-orange-500",
+      shadow: "shadow-orange-200",
+      circle: "bg-orange-400",
     },
     {
       label: "Maestras",
-      value: maestras?.length ?? 0,
+      value: maestrasCount,
       icon: GraduationCap,
-      gradient: "from-violet-400 to-violet-500",
-      light: "bg-violet-50 text-violet-500",
+      bg: "bg-violet-500",
+      shadow: "shadow-violet-200",
+      circle: "bg-violet-400",
     },
     {
       label: "Cursos",
-      value: cursos?.length ?? 0,
+      value: cursosCount,
       icon: BookOpen,
-      gradient: "from-sky-400 to-sky-500",
-      light: "bg-sky-50 text-sky-500",
+      bg: "bg-sky-500",
+      shadow: "shadow-sky-200",
+      circle: "bg-sky-400",
     },
   ];
 
+  const modCards = [
+    {
+      href: "/dashboard/director/cursos",
+      label: "Cursos",
+      desc: `${cursosCount} cursos activos`,
+      icon: BookOpen,
+      iconBg: "bg-orange-50",
+      iconColor: "text-orange-500",
+    },
+    {
+      href: "/dashboard/director/maestras",
+      label: "Maestras",
+      desc: `${maestrasCount} docentes registradas`,
+      icon: Users,
+      iconBg: "bg-violet-50",
+      iconColor: "text-violet-500",
+    },
+    {
+      href: "/dashboard/director/camaras",
+      label: "Cámaras",
+      desc: "Monitoreo en vivo",
+      icon: Video,
+      iconBg: "bg-sky-50",
+      iconColor: "text-sky-500",
+    },
+  ];
+
+  const maxBar = Math.max(...weekData.map((d) => d.presentes + d.ausentes), 1);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-nunito">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center animate-pulse">
+            <GraduationCap size={24} className="text-white" />
+          </div>
+          <p className="text-sm font-bold text-gray-400">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 flex font-nunito">
-      {/* ── SIDEBAR DESKTOP ── */}
-      <aside className="hidden lg:flex flex-col w-64 bg-white fixed h-full border-r border-gray-100 shadow-sm z-40">
-        <div className="p-6 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-200 shrink-0">
-              <GraduationCap
-                size={24}
-                className="text-white"
-                strokeWidth={2.5}
-              />
-            </div>
-            <div className="min-w-0">
-              <p className="font-black text-gray-900 text-sm leading-tight truncate">
-                {colegio?.nombre}
-              </p>
-              <span className="inline-block bg-orange-100 text-orange-600 text-xs font-bold px-2 py-0.5 rounded-full mt-1">
-                Director
-              </span>
-            </div>
-          </div>
+    <main className="min-w-0">
+      {/* TOP BAR */}
+      <div className="bg-white border-b border-gray-100 px-4 lg:px-7 py-3.5 flex items-center justify-between sticky top-0 z-30">
+        <div>
+          <p className="text-[11px] text-gray-400 font-bold capitalize">
+            {today}
+          </p>
+          <h1 className="text-base lg:text-lg font-black text-gray-900 leading-tight">
+            {colegio?.nombre}
+          </h1>
         </div>
-
-        <nav className="flex-1 p-4 space-y-1">
-          {navLinks.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex items-center gap-3 px-4 py-3 rounded-2xl text-gray-500 hover:text-orange-600 hover:bg-orange-50 transition-all text-sm font-bold group"
-            >
-              <Icon
-                size={18}
-                className="group-hover:scale-110 transition-transform"
-              />
-              {label}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="p-4 border-t border-gray-100 space-y-1">
-          {colegio?.direccion && (
-            <div className="flex items-start gap-2 px-4 py-2">
-              <MapPin size={13} className="text-gray-300 mt-0.5 shrink-0" />
-              <p className="text-gray-400 text-xs leading-tight">
-                {colegio.direccion}
-              </p>
-            </div>
-          )}
-          {colegio?.telefono && (
-            <div className="flex items-center gap-2 px-4 py-2">
-              <Phone size={13} className="text-gray-300 shrink-0" />
-              <p className="text-gray-400 text-xs">{colegio.telefono}</p>
-            </div>
-          )}
-          <button className="flex items-center gap-3 px-4 py-3 rounded-2xl text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all text-sm font-bold w-full">
-            <LogOut size={18} />
-            Cerrar sesión
+        <div className="flex items-center gap-2">
+          <button className="relative w-9 h-9 rounded-xl border border-gray-100 bg-white flex items-center justify-center hover:border-orange-200 transition-all">
+            <Bell size={16} className="text-gray-400" />
+            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-orange-500 rounded-full" />
           </button>
-        </div>
-      </aside>
-
-      {/* ── MAIN ── */}
-      <main className="flex-1 lg:ml-64 pb-28 lg:pb-10">
-        {/* TOP BAR */}
-        <div className="bg-white border-b border-gray-100 px-5 lg:px-8 py-4 flex items-center justify-between sticky top-0 z-30">
-          <div>
-            <p className="text-xs text-gray-400 font-bold capitalize">
-              {today}
-            </p>
-            <h1 className="text-lg font-black text-gray-900 leading-tight">
-              {colegio?.nombre}
-            </h1>
-          </div>
-          <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center lg:hidden">
-            <GraduationCap size={20} className="text-white" />
+          <div className="w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center">
+            <GraduationCap size={18} className="text-white" />
           </div>
         </div>
+      </div>
 
-        <div className="px-5 lg:px-8 pt-6">
-          {/* STATS */}
-          <div className="grid grid-cols-3 gap-3 lg:gap-5 mb-7">
-            {stats.map((stat) => {
-              const Icon = stat.icon;
-              return (
+      <div className="px-4 lg:px-7 pt-5">
+        {/* STATS */}
+        <div className="grid grid-cols-3 gap-3 lg:gap-4 mb-5">
+          {stats.map((s) => {
+            const Icon = s.icon;
+            return (
+              <div
+                key={s.label}
+                className={`${s.bg} rounded-2xl lg:rounded-3xl p-4 lg:p-5 text-white shadow-lg ${s.shadow} relative overflow-hidden`}
+              >
                 <div
-                  key={stat.label}
-                  className={`bg-gradient-to-br ${stat.gradient} rounded-2xl lg:rounded-3xl p-4 lg:p-6 text-white shadow-sm`}
-                >
-                  <div className="flex items-center justify-between mb-3 lg:mb-4">
-                    <div className="w-8 h-8 lg:w-10 lg:h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                      <Icon size={16} className="text-white lg:hidden" />
-                      <Icon size={20} className="text-white hidden lg:block" />
-                    </div>
+                  className={`absolute -top-4 -right-4 w-20 h-20 ${s.circle} opacity-40 rounded-full`}
+                />
+                <div
+                  className={`absolute bottom-[-20px] right-4 w-14 h-14 ${s.circle} opacity-25 rounded-full`}
+                />
+                <div className="relative z-10">
+                  <div className="w-8 h-8 lg:w-9 lg:h-9 bg-white/20 rounded-xl flex items-center justify-center mb-3">
+                    <Icon size={15} className="text-white lg:hidden" />
+                    <Icon size={18} className="text-white hidden lg:block" />
                   </div>
-                  <p className="text-2xl lg:text-4xl font-black">
-                    {stat.value}
+                  <p className="text-2xl lg:text-4xl font-black leading-none">
+                    {s.value}
                   </p>
-                  <p className="text-white/80 text-xs lg:text-sm font-bold mt-1">
-                    {stat.label}
+                  <p className="text-white/80 text-[11px] lg:text-sm font-bold mt-1">
+                    {s.label}
                   </p>
                 </div>
-              );
-            })}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* GRID PRINCIPAL */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+          {/* CHART — 2 cols */}
+          <div className="lg:col-span-2 bg-white rounded-2xl lg:rounded-3xl border border-gray-100 p-4 lg:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <BarChart2 size={16} className="text-orange-500" />
+                <h2 className="font-black text-gray-900 text-sm">
+                  Asistencia semanal
+                </h2>
+              </div>
+              <div className="flex items-center gap-3 text-[11px] font-bold">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-sm bg-orange-400 inline-block" />
+                  <span className="text-gray-400">Presentes</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-sm bg-gray-200 inline-block" />
+                  <span className="text-gray-400">Ausentes</span>
+                </span>
+              </div>
+            </div>
+            {weekData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={190}>
+                <BarChart data={weekData} barSize={28} barGap={4}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#F3F4F6"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="day"
+                    tick={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      fill: "#9CA3AF",
+                      fontFamily: "Nunito",
+                    }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis hide domain={[0, maxBar + 2]} />
+                  <Tooltip
+                    content={<CustomTooltip />}
+                    cursor={{ fill: "#F9FAFB", radius: 8 }}
+                  />
+                  <Bar
+                    dataKey="presentes"
+                    stackId="a"
+                    fill="#FB923C"
+                    radius={[0, 0, 0, 0]}
+                  >
+                    {weekData.map((_, i) => (
+                      <Cell
+                        key={i}
+                        fill={i === weekData.length - 1 ? "#F97316" : "#FED7AA"}
+                      />
+                    ))}
+                  </Bar>
+                  <Bar
+                    dataKey="ausentes"
+                    stackId="a"
+                    fill="#F3F4F6"
+                    radius={[8, 8, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[190px] flex items-center justify-center">
+                <p className="text-gray-300 text-sm font-bold">
+                  Sin datos de asistencia aún
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* GRID DESKTOP */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-7">
-            {/* CÓDIGOS - ocupa 2 columnas en desktop */}
-            <div className="lg:col-span-2 bg-white rounded-2xl lg:rounded-3xl border border-gray-100 shadow-sm p-5 lg:p-6">
-              <div className="flex items-center gap-2 mb-5">
-                <ClipboardList size={18} className="text-orange-500" />
+          {/* COLUMNA DERECHA */}
+          <div className="flex flex-col gap-4">
+            {/* CÓDIGOS */}
+            <div className="bg-white rounded-2xl lg:rounded-3xl border border-gray-100 p-4 lg:p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <ClipboardList size={15} className="text-orange-500" />
                 <h2 className="font-black text-gray-900 text-sm">
                   Códigos de acceso
                 </h2>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="bg-orange-50 rounded-2xl p-4 border border-orange-100">
-                  <p className="text-xs font-bold text-orange-400 uppercase tracking-widest mb-2">
+              <div className="space-y-3">
+                <div className="bg-orange-50 rounded-2xl p-3.5 border border-orange-100">
+                  <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-2">
                     Para maestras
                   </p>
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-mono font-black text-xl text-orange-600 tracking-widest">
-                      {colegio?.codigo_maestra}
+                    <p className="font-mono font-black text-lg text-orange-600 tracking-widest">
+                      {colegio?.codigo_maestra ?? "—"}
                     </p>
                     <CopyButton text={colegio?.codigo_maestra ?? ""} />
                   </div>
                 </div>
-                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+                <div className="bg-gray-50 rounded-2xl p-3.5 border border-gray-100">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
                     Para padres
                   </p>
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-mono font-black text-xl text-gray-700 tracking-widest">
-                      {colegio?.codigo_padre}
+                    <p className="font-mono font-black text-lg text-gray-700 tracking-widest">
+                      {colegio?.codigo_padre ?? "—"}
                     </p>
                     <CopyButton text={colegio?.codigo_padre ?? ""} />
                   </div>
@@ -228,85 +412,59 @@ export default async function DirectorPage() {
             </div>
 
             {/* PREDICCIÓN */}
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl lg:rounded-3xl p-5 lg:p-6 text-white shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <TrendingUp size={18} className="text-orange-100" />
+            <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl lg:rounded-3xl p-4 lg:p-5 text-white flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp size={15} className="text-orange-200" />
                 <h2 className="font-black text-sm">Predicción</h2>
               </div>
               <p className="text-orange-100 text-xs mb-4">
                 Asistencia estimada próxima semana
               </p>
-              <p className="text-5xl font-black mb-1">--</p>
-              <p className="text-orange-200 text-xs">
+              <p className="text-4xl font-black text-white/40 tracking-widest mb-1">
+                — —
+              </p>
+              <p className="text-orange-200 text-[10px] leading-snug">
                 Disponible cuando haya datos suficientes
               </p>
             </div>
           </div>
-
-          {/* MÓDULOS */}
-          <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">
-            Gestión
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-5">
-            {[
-              {
-                href: "/dashboard/director/cursos",
-                label: "Cursos",
-                desc: `${cursos?.length ?? 0} cursos activos`,
-                icon: BookOpen,
-                iconBg: "bg-orange-50",
-                iconColor: "text-orange-500",
-                border: "hover:border-orange-200",
-              },
-              {
-                href: "/dashboard/director/maestras",
-                label: "Maestras",
-                desc: `${maestras?.length ?? 0} docentes registradas`,
-                icon: Users,
-                iconBg: "bg-violet-50",
-                iconColor: "text-violet-500",
-                border: "hover:border-violet-200",
-              },
-              {
-                href: "/dashboard/director/camaras",
-                label: "Cámaras",
-                desc: "Monitoreo en vivo",
-                icon: Video,
-                iconBg: "bg-sky-50",
-                iconColor: "text-sky-500",
-                border: "hover:border-sky-200",
-              },
-            ].map((card) => {
-              const Icon = card.icon;
-              return (
-                <Link
-                  key={card.href}
-                  href={card.href}
-                  className={`bg-white rounded-2xl lg:rounded-3xl p-5 lg:p-6 flex items-center justify-between border border-gray-100 shadow-sm hover:shadow-md transition-all group ${card.border}`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div
-                      className={`w-12 h-12 ${card.iconBg} rounded-2xl flex items-center justify-center`}
-                    >
-                      <Icon size={22} className={card.iconColor} />
-                    </div>
-                    <div>
-                      <p className="font-black text-gray-900">{card.label}</p>
-                      <p className="text-gray-400 text-xs font-medium mt-0.5">
-                        {card.desc}
-                      </p>
-                    </div>
-                  </div>
-                  <ArrowRight
-                    size={18}
-                    className="text-gray-300 group-hover:text-orange-400 group-hover:translate-x-1 transition-all"
-                  />
-                </Link>
-              );
-            })}
-          </div>
         </div>
-      </main>
-    </div>
+
+        {/* MÓDULOS */}
+        <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">
+          Gestión
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-4 pb-6">
+          {modCards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <Link
+                key={card.href}
+                href={card.href}
+                className="bg-white rounded-2xl lg:rounded-3xl p-4 lg:p-5 flex items-center gap-4 border border-gray-100 hover:border-orange-200 hover:shadow-md transition-all group"
+              >
+                <div
+                  className={`w-11 h-11 ${card.iconBg} rounded-2xl flex items-center justify-center shrink-0`}
+                >
+                  <Icon size={20} className={card.iconColor} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-gray-900 text-sm">
+                    {card.label}
+                  </p>
+                  <p className="text-gray-400 text-xs font-medium mt-0.5">
+                    {card.desc}
+                  </p>
+                </div>
+                <ChevronRight
+                  size={16}
+                  className="text-gray-200 group-hover:text-orange-400 group-hover:translate-x-0.5 transition-all shrink-0"
+                />
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </main>
   );
 }
