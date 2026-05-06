@@ -81,12 +81,18 @@ export default async function CursoDirectorPage({
     .select("*")
     .in("alumno_id", alumnosIds.length > 0 ? alumnosIds : ["none"]);
 
-  // Plan recogida hoy
-  const { data: recogidas } = await supabase
+  // Plan recogida — sin filtro de fecha en la query para evitar errores
+  const { data: recogidasRaw } = await supabase
     .from("plan_recogida")
     .select("*")
-    .in("alumno_id", alumnosIds.length > 0 ? alumnosIds : ["none"])
-    .gte("fecha_inicio", today);
+    .in("alumno_id", alumnosIds.length > 0 ? alumnosIds : ["none"]);
+
+  // Filtramos en memoria las vigentes hoy
+  const recogidas = (recogidasRaw ?? []).filter((r: any) => {
+    const inicio = r.fecha_inicio ? r.fecha_inicio <= today : true;
+    const fin = r.fecha_fin ? r.fecha_fin >= today : true;
+    return inicio && fin;
+  });
 
   // Avisos del curso
   const { data: avisos } = await supabase

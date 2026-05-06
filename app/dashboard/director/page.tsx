@@ -141,21 +141,23 @@ export default function DirectorPage() {
 
       const alumnosIds = (alumnos ?? []).map((a: any) => a.id);
       if (alumnosIds.length > 0) {
-        const { data: asistencias } = await supabase
-          .from("asistencias")
-          .select("fecha, presente, alumno_id")
+        // Existencia de bitácora = alumno presente ese día
+        const { data: bitacoras } = await supabase
+          .from("bitacoras")
+          .select("fecha, alumno_id")
           .in("alumno_id", alumnosIds)
           .in("fecha", fechas);
 
         setWeekData(
           fechas.map((fecha) => {
-            const del_dia = (asistencias ?? []).filter(
-              (a: any) => a.fecha === fecha,
-            );
+            const presentes = (bitacoras ?? []).filter(
+              (b: any) => b.fecha === fecha,
+            ).length;
+            const ausentes = Math.max(alumnosIds.length - presentes, 0);
             return {
               day: dias[new Date(fecha + "T12:00:00").getDay()],
-              presentes: del_dia.filter((a: any) => a.presente).length,
-              ausentes: del_dia.filter((a: any) => !a.presente).length,
+              presentes,
+              ausentes,
             };
           }),
         );
