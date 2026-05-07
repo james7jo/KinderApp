@@ -3,16 +3,22 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
+  Users,
+  ClipboardList,
+  Bell,
+  Calendar,
+  BookOpen,
+  Video,
   ArrowLeft,
+  AlertCircle,
+  ChevronRight,
+  Users2,
+  Search,
+  X,
   Phone,
   Heart,
   Shield,
   MapPin,
-  Search,
-  X,
-  Users,
-  ChevronRight,
-  AlertCircle,
   User,
   CheckCircle2,
 } from "lucide-react";
@@ -21,9 +27,9 @@ type Alumno = {
   id: string;
   nombre: string;
   apellido: string;
-  fecha_nacimiento?: string;
-  genero?: string;
   foto_url?: string;
+  genero?: string;
+  fecha_nacimiento?: string;
   tipo_sangre?: string;
   alergias?: string;
   enfermedades_cronicas?: string;
@@ -38,6 +44,15 @@ type Alumno = {
   plan_recogida: any[];
 };
 
+const ESTADO_EMOJI: Record<string, string> = {
+  feliz: "😊",
+  normal: "😐",
+  triste: "😢",
+  travieso: "😈",
+  cansado: "😴",
+  enfermo: "🤒",
+};
+
 const COLORES = [
   "from-orange-100 to-orange-200 text-orange-500",
   "from-violet-100 to-violet-200 text-violet-500",
@@ -45,13 +60,6 @@ const COLORES = [
   "from-emerald-100 to-emerald-200 text-emerald-500",
   "from-rose-100 to-rose-200 text-rose-500",
 ];
-
-function edad(fechaNac?: string) {
-  if (!fechaNac) return null;
-  return Math.floor(
-    (Date.now() - new Date(fechaNac).getTime()) / (1000 * 60 * 60 * 24 * 365),
-  );
-}
 
 // ── MODAL ALUMNO ──────────────────────────────────────────────────────────────
 function ModalAlumno({
@@ -66,8 +74,16 @@ function ModalAlumno({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"info" | "familia" | "medico">("info");
-  const e = edad(alumno.fecha_nacimiento);
   const color = COLORES[colorIdx % COLORES.length];
+  const [c1, c2, c3] = color.split(" ");
+
+  const edad = alumno.fecha_nacimiento
+    ? Math.floor(
+        (Date.now() - new Date(alumno.fecha_nacimiento).getTime()) /
+          (1000 * 60 * 60 * 24 * 365),
+      )
+    : null;
+
   const tutorPrincipal = alumno.tutores?.find((t) => t.es_principal);
   const recogidaHoy = alumno.plan_recogida?.find(
     (r) => r.fecha_inicio <= today && (!r.fecha_fin || r.fecha_fin >= today),
@@ -97,7 +113,6 @@ function ModalAlumno({
           maxHeight: "calc(100dvh - 48px)",
         }}
       >
-        {/* Handle móvil */}
         <div className="lg:hidden flex justify-center pt-3 pb-1 shrink-0">
           <div className="w-10 h-1 bg-gray-200 rounded-full" />
         </div>
@@ -105,7 +120,7 @@ function ModalAlumno({
         {/* Header */}
         <div className="flex items-center gap-3 px-5 pt-3 pb-4 border-b border-gray-100 shrink-0">
           <div
-            className={`w-13 h-13 w-12 h-12 bg-gradient-to-br ${color.split(" ").slice(0, 2).join(" ")} rounded-2xl flex items-center justify-center shrink-0 overflow-hidden`}
+            className={`w-12 h-12 bg-gradient-to-br ${c1} ${c2} rounded-2xl flex items-center justify-center shrink-0 overflow-hidden`}
           >
             {alumno.foto_url ? (
               <img
@@ -114,7 +129,7 @@ function ModalAlumno({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <span className={`text-lg font-black ${color.split(" ")[2]}`}>
+              <span className={`text-lg font-black ${c3}`}>
                 {alumno.nombre[0]}
                 {alumno.apellido[0]}
               </span>
@@ -124,10 +139,10 @@ function ModalAlumno({
             <h2 className="font-black text-gray-900 text-lg leading-tight truncate">
               {alumno.nombre} {alumno.apellido}
             </h2>
-            <div className="flex items-center gap-2 mt-0.5">
-              {e && (
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              {edad && (
                 <span className="text-xs text-gray-400 font-medium">
-                  {e} años
+                  {edad} años
                 </span>
               )}
               {alumno.genero && (
@@ -168,12 +183,10 @@ function ModalAlumno({
           ))}
         </div>
 
-        {/* Contenido scrolleable */}
+        {/* Contenido */}
         <div className="overflow-y-auto flex-1 p-5 space-y-4 overscroll-contain">
-          {/* ── TAB INFO ── */}
           {tab === "info" && (
             <>
-              {/* Recoge hoy */}
               <div
                 className={`rounded-2xl p-4 ${recogidaHoy ? "bg-green-50 border border-green-100" : "bg-amber-50 border border-amber-100"}`}
               >
@@ -194,19 +207,16 @@ function ModalAlumno({
                   className={`font-black text-base ${recogidaHoy ? "text-green-800" : "text-amber-700"}`}
                 >
                   {recogidaHoy
-                    ? `${recogidaHoy.responsable_nombre}`
+                    ? recogidaHoy.responsable_nombre
                     : "⚠ No definido"}
                 </p>
                 {recogidaHoy?.responsable_relacion && (
-                  <p
-                    className={`text-xs font-medium capitalize mt-0.5 ${recogidaHoy ? "text-green-600" : "text-amber-500"}`}
-                  >
+                  <p className="text-xs font-medium capitalize text-green-600 mt-0.5">
                     {recogidaHoy.responsable_relacion}
                   </p>
                 )}
               </div>
 
-              {/* Datos generales */}
               <div className="bg-gray-50 rounded-2xl p-4">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">
                   Datos generales
@@ -214,12 +224,12 @@ function ModalAlumno({
                 <div className="bg-white rounded-xl divide-y divide-gray-50">
                   {[
                     {
-                      label: "Nombre completo",
+                      label: "Nombre",
                       value: `${alumno.nombre} ${alumno.apellido}`,
                     },
-                    { label: "Edad", value: e ? `${e} años` : "—" },
+                    { label: "Edad", value: edad ? `${edad} años` : "—" },
                     {
-                      label: "Fecha nacimiento",
+                      label: "Nacimiento",
                       value: alumno.fecha_nacimiento
                         ? new Date(
                             alumno.fecha_nacimiento + "T12:00:00",
@@ -230,16 +240,9 @@ function ModalAlumno({
                           })
                         : "—",
                     },
-                    {
-                      label: "Género",
-                      value: alumno.genero ?? "—",
-                      capitalize: true,
-                    },
-                    {
-                      label: "Tipo de sangre",
-                      value: alumno.tipo_sangre ?? "—",
-                    },
-                  ].map(({ label, value, capitalize }) => (
+                    { label: "Género", value: alumno.genero ?? "—", cap: true },
+                    { label: "Sangre", value: alumno.tipo_sangre ?? "—" },
+                  ].map(({ label, value, cap }) => (
                     <div
                       key={label}
                       className="flex items-center justify-between px-3 py-2.5"
@@ -248,7 +251,7 @@ function ModalAlumno({
                         {label}
                       </span>
                       <span
-                        className={`text-sm font-bold text-gray-800 ${capitalize ? "capitalize" : ""}`}
+                        className={`text-sm font-bold text-gray-800 ${cap ? "capitalize" : ""}`}
                       >
                         {value}
                       </span>
@@ -257,7 +260,6 @@ function ModalAlumno({
                 </div>
               </div>
 
-              {/* Notas especiales */}
               {alumno.notas_especiales && (
                 <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
                   <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-2">
@@ -271,10 +273,8 @@ function ModalAlumno({
             </>
           )}
 
-          {/* ── TAB FAMILIA ── */}
           {tab === "familia" && (
             <>
-              {/* Tutores */}
               <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
                 <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-3">
                   Tutores ({alumno.tutores?.length ?? 0})
@@ -322,7 +322,6 @@ function ModalAlumno({
                 </div>
               </div>
 
-              {/* Autorizados */}
               <div className="bg-green-50 border border-green-100 rounded-2xl p-4">
                 <p className="text-[10px] font-black text-green-600 uppercase tracking-widest mb-3">
                   Autorizados para recoger (
@@ -369,7 +368,6 @@ function ModalAlumno({
             </>
           )}
 
-          {/* ── TAB MÉDICO ── */}
           {tab === "medico" && (
             <>
               {tieneAlerta && (
@@ -383,7 +381,7 @@ function ModalAlumno({
                   <div className="bg-white rounded-xl divide-y divide-gray-50">
                     {alumno.alergias && (
                       <div className="px-3 py-2.5">
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-wide mb-0.5">
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-0.5">
                           Alergias
                         </p>
                         <p className="text-sm font-bold text-red-700">
@@ -393,7 +391,7 @@ function ModalAlumno({
                     )}
                     {alumno.medicamentos && (
                       <div className="px-3 py-2.5">
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-wide mb-0.5">
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-0.5">
                           Medicamentos
                         </p>
                         <p className="text-sm font-bold text-red-700">
@@ -403,8 +401,8 @@ function ModalAlumno({
                     )}
                     {alumno.capacidades_diferentes && (
                       <div className="px-3 py-2.5">
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-wide mb-0.5">
-                          Capacidades diferentes
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-0.5">
+                          Cap. diferentes
                         </p>
                         <p className="text-sm font-bold text-red-700">
                           ♿ {alumno.capacidades_diferentes}
@@ -414,25 +412,18 @@ function ModalAlumno({
                   </div>
                 </div>
               )}
-
               <div className="bg-gray-50 rounded-2xl p-4">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">
                   Info médica
                 </p>
                 <div className="bg-white rounded-xl divide-y divide-gray-50">
                   {[
+                    { label: "Tipo sangre", value: alumno.tipo_sangre ?? "—" },
                     {
-                      label: "Tipo de sangre",
-                      value: alumno.tipo_sangre ?? "—",
-                    },
-                    {
-                      label: "Enfermedades crónicas",
+                      label: "Enfermedades",
                       value: alumno.enfermedades_cronicas ?? "—",
                     },
-                    {
-                      label: "Médico de cabecera",
-                      value: alumno.medico_cabecera ?? "—",
-                    },
+                    { label: "Médico", value: alumno.medico_cabecera ?? "—" },
                   ].map(({ label, value }) => (
                     <div
                       key={label}
@@ -460,18 +451,10 @@ function ModalAlumno({
                       </a>
                     </div>
                   )}
-                  {alumno.tiene_seguro && (
-                    <div className="px-3 py-2.5">
-                      <span className="text-xs font-black text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                        ✓ Tiene seguro médico
-                      </span>
-                    </div>
-                  )}
                 </div>
               </div>
             </>
           )}
-
           <div className="h-4" />
         </div>
       </div>
@@ -479,21 +462,23 @@ function ModalAlumno({
   );
 }
 
-// ── PÁGINA PRINCIPAL ──────────────────────────────────────────────────────────
-export default function AlumnosClient({
-  cursoId,
-  cursoNombre,
+// ── LISTA CON BUSCADOR ────────────────────────────────────────────────────────
+function ListaAlumnos({
   alumnos,
+  bitacorasHoy,
   today,
+  cursoId,
 }: {
-  cursoId: string;
-  cursoNombre: string;
   alumnos: Alumno[];
+  bitacorasHoy: any[];
   today: string;
+  cursoId: string;
 }) {
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Alumno | null>(null);
-  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [selected, setSelected] = useState<{
+    alumno: Alumno;
+    idx: number;
+  } | null>(null);
 
   const filtrados = useMemo(() => {
     const t = search.toLowerCase().trim();
@@ -503,316 +488,371 @@ export default function AlumnosClient({
     );
   }, [alumnos, search]);
 
-  const conAlerta = alumnos.filter(
-    (a) => a.alergias || a.medicamentos || a.capacidades_diferentes,
-  ).length;
-
   return (
     <>
-      <main className="min-w-0">
-        {/* TOP BAR */}
-        <div className="bg-white border-b border-gray-100 px-4 lg:px-7 py-3.5 flex items-center gap-3 sticky top-0 z-30">
+      <div className="bg-white rounded-2xl border border-gray-100">
+        <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-50">
+          <div className="flex items-center gap-2">
+            <Users size={15} className="text-orange-500" />
+            <h2 className="font-black text-gray-900 text-sm">
+              Alumnos ({alumnos.length})
+            </h2>
+          </div>
           <Link
-            href={`/dashboard/maestra/curso/${cursoId}`}
-            className="w-9 h-9 bg-gray-50 hover:bg-gray-100 rounded-xl flex items-center justify-center transition-all shrink-0"
+            href={`/dashboard/maestra/curso/${cursoId}/alumnos`}
+            className="text-orange-500 text-xs font-bold hover:text-orange-600 transition-colors"
           >
-            <ArrowLeft size={18} className="text-gray-600" />
+            Ver todos →
           </Link>
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">
-              {cursoNombre}
-            </p>
-            <h1 className="text-lg font-black text-gray-900 leading-tight">
-              Lista de alumnos
-            </h1>
-          </div>
         </div>
 
-        <div className="px-4 lg:px-7 pt-5 pb-8">
-          {/* Stats strip */}
-          <div className="grid grid-cols-3 gap-3 mb-5">
-            <div className="bg-orange-500 rounded-2xl p-4 text-white relative overflow-hidden shadow-lg shadow-orange-200">
-              <div className="absolute -top-3 -right-3 w-14 h-14 bg-orange-400 opacity-40 rounded-full" />
-              <p className="text-2xl font-black relative z-10">
-                {alumnos.length}
-              </p>
-              <p className="text-white/80 text-[11px] font-bold mt-0.5 relative z-10">
-                Total
-              </p>
-            </div>
-            <div className="bg-white rounded-2xl p-4 border border-gray-100 text-center">
-              <p className="text-2xl font-black text-gray-900">
-                {
-                  alumnos.filter((a) =>
-                    a.plan_recogida?.some(
-                      (r: any) =>
-                        r.fecha_inicio <= today &&
-                        (!r.fecha_fin || r.fecha_fin >= today),
-                    ),
-                  ).length
-                }
-              </p>
-              <p className="text-gray-400 text-[11px] font-bold mt-0.5">
-                Con plan de recojo
-              </p>
-            </div>
-            <div
-              className={`rounded-2xl p-4 border text-center ${conAlerta > 0 ? "bg-red-50 border-red-100" : "bg-white border-gray-100"}`}
-            >
-              <p
-                className={`text-2xl font-black ${conAlerta > 0 ? "text-red-500" : "text-gray-900"}`}
-              >
-                {conAlerta}
-              </p>
-              <p
-                className={`text-[11px] font-bold mt-0.5 ${conAlerta > 0 ? "text-red-400" : "text-gray-400"}`}
-              >
-                {conAlerta > 0 ? "Alertas" : "Sin alertas"}
-              </p>
+        {/* Buscador */}
+        {alumnos.length > 4 && (
+          <div className="px-4 py-2 border-b border-gray-50">
+            <div className="relative">
+              <Search
+                size={13}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"
+              />
+              <input
+                type="text"
+                placeholder="Buscar alumno..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-gray-50 rounded-xl pl-9 pr-8 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-orange-400 transition-all"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                >
+                  <X size={12} className="text-gray-400" />
+                </button>
+              )}
             </div>
           </div>
+        )}
 
-          {/* Buscador */}
-          <div className="relative mb-4">
-            <Search
-              size={15}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300"
-            />
-            <input
-              type="text"
-              placeholder="Buscar alumno..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-white border border-gray-200 rounded-2xl pl-11 pr-10 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all"
-            />
-            {search && (
+        {/* Lista */}
+        <div className="divide-y divide-gray-50">
+          {filtrados.slice(0, 5).map((alumno, idx) => {
+            const bitacora = bitacorasHoy?.find(
+              (b) => b.alumno_id === alumno.id,
+            );
+            const presente = !!bitacora;
+            const color = COLORES[idx % COLORES.length];
+            const [c1, c2, c3] = color.split(" ");
+            const tieneAlerta = !!(
+              alumno.alergias ||
+              alumno.medicamentos ||
+              alumno.capacidades_diferentes
+            );
+
+            return (
               <button
-                onClick={() => setSearch("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center"
+                key={alumno.id}
+                onClick={() => setSelected({ alumno, idx })}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-orange-50/50 transition-all group text-left"
               >
-                <X size={12} className="text-gray-500" />
-              </button>
-            )}
-          </div>
-
-          {/* GRID DESKTOP */}
-          <div className="hidden lg:grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-            {filtrados.length > 0 ? (
-              filtrados.map((alumno, idx) => {
-                const e = edad(alumno.fecha_nacimiento);
-                const colorClass = COLORES[idx % COLORES.length];
-                const tieneAlerta = !!(
-                  alumno.alergias ||
-                  alumno.medicamentos ||
-                  alumno.capacidades_diferentes
-                );
-                const recogidaHoy = alumno.plan_recogida?.find(
-                  (r) =>
-                    r.fecha_inicio <= today &&
-                    (!r.fecha_fin || r.fecha_fin >= today),
-                );
-                return (
-                  <button
-                    key={alumno.id}
-                    onClick={() => {
-                      setSelected(alumno);
-                      setSelectedIdx(idx);
-                    }}
-                    className="bg-white rounded-2xl border border-gray-100 hover:border-orange-200 hover:shadow-md transition-all group text-left flex flex-col overflow-hidden"
-                  >
-                    <div className="p-4 flex items-center gap-3">
-                      <div
-                        className={`w-12 h-12 bg-gradient-to-br ${colorClass.split(" ").slice(0, 2).join(" ")} rounded-2xl flex items-center justify-center shrink-0 overflow-hidden`}
-                      >
-                        {alumno.foto_url ? (
-                          <img
-                            src={alumno.foto_url}
-                            alt=""
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span
-                            className={`font-black text-lg ${colorClass.split(" ")[2]}`}
-                          >
-                            {alumno.nombre[0]}
-                            {alumno.apellido[0]}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="font-black text-gray-900 text-sm truncate">
-                            {alumno.nombre} {alumno.apellido}
-                          </p>
-                          {tieneAlerta && (
-                            <AlertCircle
-                              size={12}
-                              className="text-red-400 shrink-0"
-                            />
-                          )}
-                        </div>
-                        {e && (
-                          <p className="text-xs text-gray-400 mt-0.5 capitalize">
-                            {e} años{alumno.genero ? ` · ${alumno.genero}` : ""}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="px-4 pb-3 space-y-1.5">
-                      {recogidaHoy ? (
-                        <div className="flex items-center gap-2 bg-green-50 rounded-xl px-3 py-1.5">
-                          <span className="text-[11px] font-bold text-green-700 truncate">
-                            ✓ Recoge: {recogidaHoy.responsable_nombre}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-1.5">
-                          <span className="text-[11px] text-gray-400">
-                            Sin plan de recogida
-                          </span>
-                        </div>
-                      )}
-                      {tieneAlerta && (
-                        <div className="flex items-center gap-2 bg-red-50 rounded-xl px-3 py-1.5">
-                          <AlertCircle
-                            size={11}
-                            className="text-red-400 shrink-0"
-                          />
-                          <span className="text-[11px] font-bold text-red-600 truncate">
-                            {alumno.alergias ??
-                              alumno.medicamentos ??
-                              alumno.capacidades_diferentes}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-auto border-t border-gray-50 px-4 py-2.5 flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-gray-400">
-                        Ver ficha completa
-                      </span>
-                      <ChevronRight
-                        size={13}
-                        className="text-gray-200 group-hover:text-orange-400 transition-colors"
-                      />
-                    </div>
-                  </button>
-                );
-              })
-            ) : (
-              <div className="col-span-full py-12 text-center bg-white rounded-2xl border border-gray-100">
-                <p className="text-gray-400 text-sm font-bold">
-                  Sin resultados para &quot;{search}&quot;
-                </p>
-                <button
-                  onClick={() => setSearch("")}
-                  className="text-orange-500 text-xs font-bold mt-2"
+                <div
+                  className={`w-10 h-10 bg-gradient-to-br ${c1} ${c2} rounded-xl flex items-center justify-center shrink-0 overflow-hidden`}
                 >
-                  Limpiar
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* LISTA MÓVIL */}
-          <div className="lg:hidden bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            {filtrados.length > 0 ? (
-              filtrados.map((alumno, idx) => {
-                const e = edad(alumno.fecha_nacimiento);
-                const colorClass = COLORES[idx % COLORES.length];
-                const tieneAlerta = !!(
-                  alumno.alergias ||
-                  alumno.medicamentos ||
-                  alumno.capacidades_diferentes
-                );
-                const recogidaHoy = alumno.plan_recogida?.find(
-                  (r) =>
-                    r.fecha_inicio <= today &&
-                    (!r.fecha_fin || r.fecha_fin >= today),
-                );
-                return (
-                  <button
-                    key={alumno.id}
-                    onClick={() => {
-                      setSelected(alumno);
-                      setSelectedIdx(idx);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-gray-50 last:border-0 hover:bg-gray-50/80 transition-all group text-left"
-                  >
-                    <div
-                      className={`w-11 h-11 bg-gradient-to-br ${colorClass.split(" ").slice(0, 2).join(" ")} rounded-xl flex items-center justify-center shrink-0 overflow-hidden`}
-                    >
-                      {alumno.foto_url ? (
-                        <img
-                          src={alumno.foto_url}
-                          alt=""
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span
-                          className={`font-black text-sm ${colorClass.split(" ")[2]}`}
-                        >
-                          {alumno.nombre[0]}
-                          {alumno.apellido[0]}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-black text-gray-900 text-sm">
-                          {alumno.nombre} {alumno.apellido}
-                        </p>
-                        {tieneAlerta && (
-                          <AlertCircle
-                            size={12}
-                            className="text-red-400 shrink-0"
-                          />
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {e && (
-                          <span className="text-xs text-gray-400">
-                            {e} años
-                          </span>
-                        )}
-                        {recogidaHoy && (
-                          <span className="text-[10px] font-bold text-green-600 truncate">
-                            · Recoge: {recogidaHoy.responsable_nombre}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <ChevronRight
-                      size={14}
-                      className="text-gray-200 group-hover:text-orange-400 transition-colors shrink-0"
+                  {alumno.foto_url ? (
+                    <img
+                      src={alumno.foto_url}
+                      alt=""
+                      className="w-full h-full object-cover"
                     />
-                  </button>
-                );
-              })
-            ) : (
-              <div className="py-12 text-center">
-                <p className="text-gray-400 text-sm font-bold">
-                  Sin resultados para &quot;{search}&quot;
-                </p>
-                <button
-                  onClick={() => setSearch("")}
-                  className="text-orange-500 text-xs font-bold mt-2"
-                >
-                  Limpiar
-                </button>
-              </div>
-            )}
-          </div>
+                  ) : (
+                    <span className={`font-black text-sm ${c3}`}>
+                      {alumno.nombre[0]}
+                      {alumno.apellido[0]}
+                    </span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-black text-gray-900 text-sm truncate">
+                      {alumno.nombre} {alumno.apellido}
+                    </p>
+                    {tieneAlerta && (
+                      <AlertCircle
+                        size={11}
+                        className="text-red-400 shrink-0"
+                      />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {presente ? (
+                      <span className="text-[10px] font-bold text-green-500">
+                        ✓ Presente
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-gray-400">
+                        Ausente
+                      </span>
+                    )}
+                    {bitacora?.estado_animo && (
+                      <span className="text-sm">
+                        {ESTADO_EMOJI[bitacora.estado_animo]}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <ChevronRight
+                  size={14}
+                  className="text-gray-200 group-hover:text-orange-400 transition-colors shrink-0"
+                />
+              </button>
+            );
+          })}
+
+          {filtrados.length === 0 && (
+            <div className="py-8 text-center">
+              <p className="text-gray-400 text-sm font-bold">
+                Sin resultados para "{search}"
+              </p>
+            </div>
+          )}
         </div>
-      </main>
+      </div>
 
       {selected && (
         <ModalAlumno
-          alumno={selected}
+          alumno={selected.alumno}
           today={today}
-          colorIdx={selectedIdx}
+          colorIdx={selected.idx}
           onClose={() => setSelected(null)}
         />
       )}
     </>
+  );
+}
+
+// ── PÁGINA PRINCIPAL ──────────────────────────────────────────────────────────
+export default function CursoHubClient({
+  cursoId,
+  curso,
+  alumnos,
+  bitacorasHoy,
+  avisosRecientes,
+  actProximas,
+  totalAlumnos,
+  asistenciaHoy,
+  pendientes,
+  pct,
+  today,
+}: {
+  cursoId: string;
+  curso: any;
+  alumnos: Alumno[];
+  bitacorasHoy: any[];
+  avisosRecientes: any[];
+  actProximas: any[];
+  totalAlumnos: number;
+  asistenciaHoy: number;
+  pendientes: number;
+  pct: number;
+  today: string;
+}) {
+  const modulos = [
+    {
+      href: `/dashboard/maestra/curso/${cursoId}/alumnos`,
+      label: "Lista de alumnos",
+      desc: `${totalAlumnos} estudiantes`,
+      icon: Users,
+      iconBg: "bg-orange-50",
+      iconColor: "text-orange-500",
+      hover: "hover:border-orange-200",
+    },
+    {
+      href: `/dashboard/maestra/curso/${cursoId}/bitacora`,
+      label: "Bitácora diaria",
+      desc:
+        pendientes > 0
+          ? `${pendientes} pendiente${pendientes !== 1 ? "s" : ""} hoy`
+          : "Al día ✓",
+      icon: ClipboardList,
+      iconBg: "bg-violet-50",
+      iconColor: "text-violet-500",
+      hover: "hover:border-violet-200",
+      alert: pendientes > 0,
+    },
+    {
+      href: `/dashboard/maestra/curso/${cursoId}/avisos`,
+      label: "Avisos",
+      desc:
+        avisosRecientes.length > 0 ? avisosRecientes[0].titulo : "Sin avisos",
+      icon: Bell,
+      iconBg: "bg-sky-50",
+      iconColor: "text-sky-500",
+      hover: "hover:border-sky-200",
+    },
+    {
+      href: `/dashboard/maestra/curso/${cursoId}/actividades`,
+      label: "Actividades",
+      desc: actProximas.length > 0 ? actProximas[0].titulo : "Sin actividades",
+      icon: Calendar,
+      iconBg: "bg-green-50",
+      iconColor: "text-green-500",
+      hover: "hover:border-green-200",
+    },
+    {
+      href: `/dashboard/maestra/curso/${cursoId}/camara`,
+      label: "Cámaras",
+      desc: "Monitoreo en vivo",
+      icon: Video,
+      iconBg: "bg-red-50",
+      iconColor: "text-red-400",
+      hover: "hover:border-red-200",
+    },
+    {
+      href: `/dashboard/maestra/curso/${cursoId}/mesa-directiva`,
+      label: "Mesa directiva",
+      desc: "Organización de padres",
+      icon: Users2,
+      iconBg: "bg-amber-50",
+      iconColor: "text-amber-500",
+      hover: "hover:border-amber-200",
+    },
+  ];
+
+  return (
+    <main className="min-w-0">
+      {/* TOP BAR */}
+      <div className="bg-white border-b border-gray-100 px-4 lg:px-7 py-3.5 flex items-center gap-3 sticky top-0 z-30">
+        <Link
+          href="/dashboard/maestra/curso"
+          className="w-9 h-9 bg-gray-50 hover:bg-gray-100 rounded-xl flex items-center justify-center transition-all shrink-0"
+        >
+          <ArrowLeft size={18} className="text-gray-600" />
+        </Link>
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">
+            Curso
+          </p>
+          <h1 className="text-lg font-black text-gray-900 leading-tight truncate">
+            {curso?.nombre}
+          </h1>
+        </div>
+        <span className="text-[10px] font-black text-gray-400 bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-full shrink-0 font-mono">
+          {curso?.codigo}
+        </span>
+      </div>
+
+      <div className="px-4 lg:px-7 pt-5 pb-8 space-y-5">
+        {/* STATS */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-orange-500 rounded-2xl p-4 text-white relative overflow-hidden shadow-lg shadow-orange-200">
+            <div className="absolute -top-4 -right-4 w-16 h-16 bg-orange-400 opacity-40 rounded-full" />
+            <div className="relative z-10">
+              <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center mb-2">
+                <Users size={14} className="text-white" />
+              </div>
+              <p className="text-2xl lg:text-3xl font-black leading-none">
+                {totalAlumnos}
+              </p>
+              <p className="text-white/80 text-[11px] font-bold mt-1">
+                Alumnos
+              </p>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl p-4 border border-gray-100 text-center">
+            <p className="text-2xl lg:text-3xl font-black text-gray-900 leading-none">
+              {asistenciaHoy}
+            </p>
+            <p className="text-gray-400 text-[11px] font-bold mt-1">
+              Presentes hoy
+            </p>
+          </div>
+          <div
+            className={`rounded-2xl p-4 border text-center ${pct >= 80 ? "bg-green-50 border-green-100" : pct >= 50 ? "bg-amber-50 border-amber-100" : "bg-red-50 border-red-100"}`}
+          >
+            <p
+              className={`text-2xl lg:text-3xl font-black leading-none ${pct >= 80 ? "text-green-600" : pct >= 50 ? "text-amber-600" : "text-red-500"}`}
+            >
+              {pct}%
+            </p>
+            <p
+              className={`text-[11px] font-bold mt-1 ${pct >= 80 ? "text-green-400" : pct >= 50 ? "text-amber-400" : "text-red-400"}`}
+            >
+              Asistencia
+            </p>
+          </div>
+        </div>
+
+        {/* ALERTA */}
+        {pendientes > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
+              <AlertCircle size={18} className="text-amber-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-amber-800 text-sm">
+                {pendientes} bitácora{pendientes !== 1 ? "s" : ""} sin completar
+                hoy
+              </p>
+              <p className="text-amber-600 text-xs font-medium">
+                Completá antes de que termine el día
+              </p>
+            </div>
+            <Link
+              href={`/dashboard/maestra/curso/${cursoId}/bitacora`}
+              className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black px-3 py-2 rounded-xl transition-all shrink-0"
+            >
+              Ir <ChevronRight size={12} />
+            </Link>
+          </div>
+        )}
+
+        {/* LISTA ALUMNOS CON MODAL */}
+        {alumnos.length > 0 && (
+          <ListaAlumnos
+            alumnos={alumnos}
+            bitacorasHoy={bitacorasHoy}
+            today={today}
+            cursoId={cursoId}
+          />
+        )}
+
+        {/* MÓDULOS */}
+        <div>
+          <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">
+            Gestión del curso
+          </h2>
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            {modulos.map((mod) => {
+              const Icon = mod.icon;
+              return (
+                <Link
+                  key={mod.href}
+                  href={mod.href}
+                  className={`bg-white rounded-2xl p-4 border border-gray-100 ${mod.hover} hover:shadow-md transition-all group`}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div
+                      className={`w-10 h-10 ${mod.iconBg} rounded-xl flex items-center justify-center`}
+                    >
+                      <Icon size={18} className={mod.iconColor} />
+                    </div>
+                    {(mod as any).alert && (
+                      <span className="w-2 h-2 bg-amber-400 rounded-full mt-1" />
+                    )}
+                  </div>
+                  <p className="font-black text-gray-900 text-sm">
+                    {mod.label}
+                  </p>
+                  <p
+                    className={`text-xs mt-0.5 leading-tight font-medium ${(mod as any).alert ? "text-amber-500" : "text-gray-400"}`}
+                  >
+                    {mod.desc}
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }

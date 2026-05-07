@@ -22,10 +22,17 @@ export default async function CamarasDirectorPage() {
     .eq("activa", true)
     .order("created_at");
 
+  const { data: cursos } = await supabase
+    .from("cursos")
+    .select("id, nombre")
+    .eq("colegio_id", profile?.colegio_id)
+    .order("nombre");
+
   return (
     <CamarasClient
       camaras={camaras ?? []}
       colegioId={profile?.colegio_id ?? ""}
+      cursos={cursos ?? []}
     />
   );
 }

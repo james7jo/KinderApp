@@ -29,6 +29,12 @@ type Camara = {
   stream_url: string;
   activa: boolean;
   tipo?: string | null;
+  curso_id?: string | null;
+};
+
+type Curso = {
+  id: string;
+  nombre: string;
 };
 
 type Seccion = {
@@ -129,6 +135,7 @@ function StreamView({
 }
 
 // ── MODAL DETALLE ─────────────────────────────────────────────────────────────
+// ── MODAL DETALLE CON ELIMINACIÓN ─────────────────────────────────────────────
 function ModalCamara({
   camara,
   onClose,
@@ -146,14 +153,22 @@ function ModalCamara({
     SECCIONES.find((s) => s.key === (camara.tipo ?? "kinder")) ?? SECCIONES[1];
   const Icon = seccion.icon;
 
-  async function handleEliminar() {
+  // ESTA FUNCIÓN AHORA BORRA DE VERDAD EL REGISTRO
+  async function handleBorrarDefinitivo() {
     setLoading(true);
-    await supabase
+    const { error } = await supabase
       .from("camaras")
-      .update({ activa: false })
+      .delete() // <--- Cambiado de update a delete
       .eq("id", camara.id);
+
+    if (error) {
+      alert("No se pudo eliminar la cámara");
+      setLoading(false);
+      return;
+    }
+
     setLoading(false);
-    onEliminar(camara.id);
+    onEliminar(camara.id); // Avisa al padre para que la quite de la lista
     onClose();
     router.refresh();
   }
@@ -164,6 +179,7 @@ function ModalCamara({
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
+
       <div
         className="relative bg-white w-full lg:max-w-2xl rounded-t-3xl lg:rounded-3xl shadow-2xl flex flex-col border border-gray-100 overflow-hidden"
         style={{
@@ -171,10 +187,12 @@ function ModalCamara({
           maxHeight: "calc(100dvh - 48px)",
         }}
       >
+        {/* Handle móvil fijo */}
         <div className="lg:hidden flex justify-center pt-3 pb-1 shrink-0 bg-white">
           <div className="w-10 h-1 bg-gray-200 rounded-full" />
         </div>
 
+        {/* Header fijo */}
         <div className="flex items-center gap-3 px-5 pt-3 pb-4 border-b border-gray-100 shrink-0 bg-white z-10">
           <div
             className={`w-10 h-10 ${seccion.iconBg} rounded-xl flex items-center justify-center shrink-0`}
@@ -185,46 +203,28 @@ function ModalCamara({
             <h2 className="font-black text-gray-900 text-base leading-tight truncate">
               {camara.nombre}
             </h2>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span
-                className={`text-[10px] font-black px-2 py-0.5 rounded-full ${seccion.iconBg} ${seccion.iconColor}`}
-              >
-                {seccion.label}
-              </span>
-              {camara.ubicacion && (
-                <div className="flex items-center gap-1">
-                  <MapPin size={10} className="text-gray-400" />
-                  <p className="text-gray-400 text-xs font-medium truncate">
-                    {camara.ubicacion}
-                  </p>
-                </div>
-              )}
-            </div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              {seccion.label}
+            </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="hidden sm:flex items-center gap-1.5 bg-green-50 border border-green-100 px-2.5 py-1 rounded-full">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-green-600 text-[10px] font-black uppercase">
-                Activa
-              </span>
-            </div>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-all shrink-0"
-            >
-              <X size={16} className="text-gray-500" />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-all shrink-0"
+          >
+            <X size={16} className="text-gray-500" />
+          </button>
         </div>
 
+        {/* Cuerpo Scrolleable */}
         <div className="flex-1 overflow-y-auto overscroll-contain flex flex-col bg-slate-50">
           <div className="shrink-0 aspect-video bg-gray-900 shadow-inner">
             <StreamView camara={camara} />
           </div>
+
           <div className="p-5 space-y-4">
             <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">
-                Parámetros de conexión
+                Conexión
               </p>
               <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 mb-3">
                 <p className="text-[10px] font-bold text-slate-400 mb-1 uppercase">
@@ -243,39 +243,41 @@ function ModalCamara({
                 <Globe size={14} /> ABRIR TRANSMISIÓN
               </a>
             </div>
+
             <div className="flex items-start gap-3 px-2">
               <Activity size={14} className="text-orange-400 shrink-0 mt-0.5" />
               <p className="text-[10px] text-gray-400 font-medium leading-relaxed">
-                Esta señal está siendo monitoreada. Asegúrese de que la cámara
-                tenga suficiente ancho de banda.
+                Asegúrese de que el servidor externo esté disponible. Si cambia
+                la IP, deberá editar esta cámara.
               </p>
             </div>
           </div>
           <div className="h-6 shrink-0" />
         </div>
 
+        {/* Footer fijo con el Basurero Pro */}
         <div className="shrink-0 border-t border-gray-100 p-5 bg-white z-10">
           {!confirmDelete ? (
             <button
               onClick={() => setConfirmDelete(true)}
-              className="w-full flex items-center justify-center gap-2 bg-white hover:bg-red-50 border border-gray-200 hover:border-red-200 text-gray-400 hover:text-red-500 font-bold py-3.5 rounded-2xl transition-all text-sm active:scale-95"
+              className="w-full flex items-center justify-center gap-2 bg-red-50 hover:bg-red-100 text-red-500 font-black py-3.5 rounded-2xl transition-all text-sm active:scale-95"
             >
-              <Trash2 size={15} /> Desactivar cámara
+              <Trash2 size={16} /> ELIMINAR CÁMARA
             </button>
           ) : (
-            <div className="flex gap-3">
+            <div className="flex gap-3 animate-in fade-in zoom-in-95 duration-200">
               <button
                 onClick={() => setConfirmDelete(false)}
-                className="flex-1 border border-gray-200 text-gray-500 font-bold py-3.5 rounded-2xl text-sm hover:bg-gray-50 transition-all active:scale-95"
+                className="flex-1 border border-gray-200 text-gray-500 font-bold py-3.5 rounded-2xl text-sm hover:bg-gray-50 transition-all"
               >
                 Cancelar
               </button>
               <button
-                onClick={handleEliminar}
+                onClick={handleBorrarDefinitivo}
                 disabled={loading}
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white font-black py-3.5 rounded-2xl transition-all text-sm disabled:opacity-50 active:scale-95 shadow-lg shadow-red-200"
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-black py-3.5 rounded-2xl transition-all text-sm disabled:opacity-50 shadow-lg shadow-red-200 flex items-center justify-center gap-2"
               >
-                {loading ? "..." : "Confirmar"}
+                {loading ? "Borrando..." : "SÍ, ELIMINAR"}
               </button>
             </div>
           )}
@@ -288,15 +290,18 @@ function ModalCamara({
 // ── MODAL NUEVA CÁMARA ────────────────────────────────────────────────────────
 function ModalNuevaCamara({
   colegioId,
+  cursos,
   onClose,
 }: {
   colegioId: string;
+  cursos: Curso[];
   onClose: () => void;
 }) {
   const [nombre, setNombre] = useState("");
   const [ubicacion, setUbicacion] = useState("");
   const [streamUrl, setStreamUrl] = useState("");
   const [tipo, setTipo] = useState("aulas");
+  const [cursoId, setCursoId] = useState("");
   const [loading, setLoading] = useState(false);
   const supabase = createClient();
   const router = useRouter();
@@ -310,6 +315,7 @@ function ModalNuevaCamara({
       ubicacion: ubicacion || null,
       stream_url: streamUrl,
       tipo,
+      curso_id: tipo === "aulas" && cursoId ? cursoId : null,
       activa: true,
     });
     setLoading(false);
@@ -388,6 +394,30 @@ function ModalNuevaCamara({
                 })}
               </div>
             </div>
+            {/* Selector de curso — solo para aulas */}
+            {tipo === "aulas" && cursos.length > 0 && (
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                  Curso asignado
+                </label>
+                <select
+                  value={cursoId}
+                  onChange={(e) => setCursoId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-orange-400 bg-gray-50/50"
+                >
+                  <option value="">Sin asignar a curso específico</option>
+                  {cursos.map((cu) => (
+                    <option key={cu.id} value={cu.id}>
+                      {cu.nombre}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-400 font-medium mt-1.5">
+                  La maestra del curso podrá ver esta cámara
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
                 Nombre *
@@ -452,9 +482,11 @@ function ModalNuevaCamara({
 export default function CamarasClient({
   camaras: initialCamaras,
   colegioId,
+  cursos,
 }: {
   camaras: Camara[];
   colegioId: string;
+  cursos: Curso[];
 }) {
   const [camaras, setCamaras] = useState(initialCamaras);
   const [selected, setSelected] = useState<Camara | null>(null);
@@ -721,6 +753,7 @@ export default function CamarasClient({
       {showNueva && (
         <ModalNuevaCamara
           colegioId={colegioId}
+          cursos={cursos}
           onClose={() => setShowNueva(false)}
         />
       )}
