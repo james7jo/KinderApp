@@ -81,8 +81,18 @@ export default function SidebarDirector({ colegio, userName }: Props) {
       : pathname === href || pathname.startsWith(href + "/");
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.replace("/auth/login");
+    try {
+      // 1. Cerramos sesión en Supabase (limpia localStorage/Auth)
+      await supabase.auth.signOut();
+
+      // 2. Forzamos un refresco total hacia el login
+      // Esto es más seguro que router.push en el sidebar de PC
+      window.location.href = "/auth/login";
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+      // Fallback por si falla el logout programático
+      window.location.reload();
+    }
   };
 
   // Iniciales del colegio para el avatar

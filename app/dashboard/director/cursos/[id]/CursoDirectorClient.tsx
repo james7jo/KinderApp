@@ -1,6 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
+
+const MapaGPS = dynamic(() => import("@/components/gps/MapaGPS"), {
+  ssr: false,
+});
 import {
   Users,
   BookOpen,
@@ -18,6 +23,7 @@ import {
   User,
   GraduationCap,
   MapPin,
+  Navigation,
 } from "lucide-react";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
@@ -141,9 +147,9 @@ function ModalAlumno({
   recogidaAlumno?: Recogida;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<"info" | "medico" | "familia" | "bitacora">(
-    "info",
-  );
+  const [tab, setTab] = useState<
+    "info" | "medico" | "familia" | "bitacora" | "gps"
+  >("info");
 
   const edad = alumno.fecha_nacimiento
     ? Math.floor(
@@ -157,6 +163,7 @@ function ModalAlumno({
     { key: "medico", label: "Médico", icon: Heart },
     { key: "familia", label: "Familia", icon: Users },
     { key: "bitacora", label: "Bitácora", icon: ClipboardList },
+    { key: "gps", label: "GPS", icon: Navigation },
   ] as const;
 
   return (
@@ -165,10 +172,23 @@ function ModalAlumno({
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative bg-white w-full lg:max-w-lg lg:rounded-3xl rounded-t-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center gap-4 px-5 pt-5 pb-4 border-b border-gray-100 shrink-0">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 bg-gradient-to-br from-orange-100 to-orange-200 overflow-hidden">
+
+      {/* 
+        MÓVIL: ocupa toda la pantalla menos una pequeña franja arriba (safe area)
+        DESKTOP: ancho fijo, altura máxima con scroll interno
+      */}
+      <div
+        className="relative bg-white w-full lg:max-w-lg rounded-t-3xl lg:rounded-3xl flex flex-col shadow-2xl"
+        style={{ height: "calc(100dvh - 48px)" }}
+      >
+        {/* Handle de arrastre visual — solo móvil */}
+        <div className="lg:hidden flex justify-center pt-3 pb-1 shrink-0">
+          <div className="w-10 h-1 bg-gray-200 rounded-full" />
+        </div>
+
+        {/* ── HEADER ── */}
+        <div className="flex items-center gap-3 px-5 pt-3 pb-4 border-b border-gray-100 shrink-0">
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-gradient-to-br from-orange-100 to-orange-200 overflow-hidden">
             {alumno.foto_url ? (
               <img
                 src={alumno.foto_url}
@@ -176,17 +196,17 @@ function ModalAlumno({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <span className="text-xl font-black text-orange-500">
+              <span className="text-lg font-black text-orange-500">
                 {alumno.nombre[0]}
                 {alumno.apellido[0]}
               </span>
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-black text-gray-900 text-lg leading-tight">
+            <h2 className="font-black text-gray-900 text-base leading-tight truncate">
               {alumno.nombre} {alumno.apellido}
             </h2>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex items-center flex-wrap gap-1.5 mt-0.5">
               {edad && (
                 <span className="text-xs font-bold text-gray-400">
                   {edad} años
@@ -212,27 +232,27 @@ function ModalAlumno({
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-gray-100 shrink-0 px-2">
+        {/* ── TABS ── */}
+        <div className="flex border-b border-gray-100 shrink-0">
           {tabs.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
-              className={`flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-black transition-all ${
+              className={`flex-1 flex flex-col items-center gap-1 py-2.5 text-[9px] font-black transition-all ${
                 tab === key
                   ? "text-orange-500 border-b-2 border-orange-500"
                   : "text-gray-400 hover:text-gray-600"
               }`}
             >
-              <Icon size={15} />
+              <Icon size={14} />
               {label}
             </button>
           ))}
         </div>
 
-        {/* Contenido */}
-        <div className="overflow-y-auto flex-1 p-5 space-y-4">
-          {/* ── TAB INFO ── */}
+        {/* ── CONTENIDO CON SCROLL ── */}
+        <div className="overflow-y-auto flex-1 p-4 space-y-3 overscroll-contain">
+          {/* TAB INFO */}
           {tab === "info" && (
             <>
               <Section title="Datos generales" color="orange">
@@ -257,7 +277,6 @@ function ModalAlumno({
                 />
                 <Row label="Género" value={alumno.genero ?? "—"} capitalize />
               </Section>
-
               <Section title="Recogida de hoy" color="green">
                 {recogidaAlumno ? (
                   <>
@@ -275,7 +294,7 @@ function ModalAlumno({
                     )}
                   </>
                 ) : (
-                  <p className="text-amber-500 text-sm font-bold">
+                  <p className="text-amber-500 text-sm font-bold py-1">
                     ⚠ No definida para hoy
                   </p>
                 )}
@@ -283,7 +302,7 @@ function ModalAlumno({
             </>
           )}
 
-          {/* ── TAB MÉDICO ── */}
+          {/* TAB MÉDICO */}
           {tab === "medico" && (
             <>
               <Section title="Información médica" color="red">
@@ -295,14 +314,14 @@ function ModalAlumno({
                   value={alumno.enfermedades_cronicas ?? "—"}
                 />
                 <Row
-                  label="Capacidades diferentes"
+                  label="Cap. diferentes"
                   value={alumno.capacidades_diferentes ?? "—"}
                 />
               </Section>
               <Section title="Médico de cabecera" color="red">
                 <Row label="Nombre" value={alumno.medico_cabecera ?? "—"} />
                 {alumno.telefono_medico && (
-                  <div className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                  <div className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">
                       Teléfono
                     </span>
@@ -325,7 +344,7 @@ function ModalAlumno({
             </>
           )}
 
-          {/* ── TAB FAMILIA ── */}
+          {/* TAB FAMILIA */}
           {tab === "familia" && (
             <>
               <Section title={`Tutores (${tutoresAlumno.length})`} color="blue">
@@ -369,7 +388,6 @@ function ModalAlumno({
                   </p>
                 )}
               </Section>
-
               <Section
                 title={`Autorizados para recoger (${tercerosAlumno.length})`}
                 color="green"
@@ -420,12 +438,12 @@ function ModalAlumno({
             </>
           )}
 
-          {/* ── TAB BITÁCORA ── */}
+          {/* TAB BITÁCORA */}
           {tab === "bitacora" && (
             <Section title="Bitácora de hoy" color="orange">
               {bitacora ? (
                 <div className="space-y-3 pt-1">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between py-1">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">
                       ¿Comió?
                     </span>
@@ -446,7 +464,7 @@ function ModalAlumno({
                     </span>
                   </div>
                   {bitacora.estado_animo && (
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between py-1">
                       <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">
                         Estado
                       </span>
@@ -487,6 +505,25 @@ function ModalAlumno({
               )}
             </Section>
           )}
+
+          {/* TAB GPS */}
+          {tab === "gps" && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Navigation size={15} className="text-orange-500" />
+                <p className="text-xs font-black text-gray-500 uppercase tracking-widest">
+                  Ubicación en tiempo real
+                </p>
+              </div>
+              <MapaGPS
+                alumnoId={alumno.id}
+                alumnoNombre={`${alumno.nombre} ${alumno.apellido}`}
+              />
+            </div>
+          )}
+
+          {/* Padding final para que el último elemento no quede pegado al borde */}
+          <div className="h-4" />
         </div>
       </div>
     </div>
@@ -515,7 +552,7 @@ function ModalMaestra({
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative bg-white w-full lg:max-w-md lg:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden">
+      <div className="relative bg-white w-full lg:max-w-md lg:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[92vh] lg:max-h-[85vh] flex flex-col">
         <div className="flex items-center gap-4 px-5 pt-5 pb-4 border-b border-gray-100">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 bg-gradient-to-br from-violet-400 to-violet-600 overflow-hidden shadow-lg shadow-violet-200">
             {maestra.avatar_url ? (
@@ -543,7 +580,7 @@ function ModalMaestra({
             <X size={16} className="text-gray-500" />
           </button>
         </div>
-        <div className="p-5 space-y-3">
+        <div className="p-5 space-y-3 overflow-y-auto flex-1">
           <Section title="Información de contacto" color="violet">
             {maestra.email && <Row label="Email" value={maestra.email} />}
             {maestra.telefono && (
