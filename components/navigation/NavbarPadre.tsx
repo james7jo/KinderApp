@@ -80,9 +80,17 @@ export default function NavbarPadre({
       label: "Actividades",
       icon: Calendar,
     },
-    { href: `/dashboard/padre/hijo/${hijoId}/gps`, label: "GPS", icon: MapPin },
+    {
+      href: `/dashboard/padre/hijo/${hijoId}/gps`,
+      label: "GPS en vivo",
+      icon: MapPin,
+    },
+    {
+      href: `/dashboard/padre/hijo/${hijoId}/gps/alertas`,
+      label: "Alertas recogida",
+      icon: Bell,
+    },
   ];
-
   return (
     <>
       {/* ── SIDEBAR DESKTOP ── */}
