@@ -61,7 +61,7 @@ export default function RegistroPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [relacionInvitado, setRelacionInvitado] = useState("Madre");
+  const [relacionInvitado, setRelacionInvitado] = useState("Padre");
   const supabase = createClient();
 
   const rolActivo = ROLES.find((r) => r.value === rol);
@@ -373,6 +373,7 @@ export default function RegistroPage() {
                     </label>
                     <div className="grid grid-cols-3 gap-2">
                       {[
+                        "Padre",
                         "Madre",
                         "Abuelo/a",
                         "Tutor legal",
@@ -669,6 +670,7 @@ export default function RegistroPage() {
                       </label>
                       <div className="grid grid-cols-3 gap-2">
                         {[
+                          "Padre",
                           "Madre",
                           "Abuelo/a",
                           "Tutor legal",
