@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface Props {
@@ -12,9 +12,12 @@ export default function MapaGPS({ alumnoId, alumnoNombre }: Props) {
     lat: number;
     lng: number;
   } | null>(null);
+  const [ruta, setRuta] = useState<[number, number][]>([]);
   const [ultimaVez, setUltimaVez] = useState<string>("");
   const [MapComponent, setMapComponent] = useState<any>(null);
+  const mapRef = useRef<any>(null);
   const supabase = createClient();
+
   useEffect(() => {
     import("leaflet").then((L) => {
       delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -29,24 +32,25 @@ export default function MapaGPS({ alumnoId, alumnoNombre }: Props) {
   }, []);
 
   useEffect(() => {
-    // Cargar ubicación inicial
-    async function cargarUbicacion() {
+    async function cargarRuta() {
+      // Traemos los últimos 50 puntos para dibujar la ruta
       const { data } = await supabase
         .from("ubicaciones")
         .select("lat, lng, updated_at")
         .eq("alumno_id", alumnoId)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .single();
+        .order("updated_at", { ascending: true })
+        .limit(50);
 
-      if (data) {
-        setUbicacion({ lat: data.lat, lng: data.lng });
-        setUltimaVez(new Date(data.updated_at).toLocaleTimeString("es-BO"));
+      if (data && data.length > 0) {
+        const puntos: [number, number][] = data.map((d) => [d.lat, d.lng]);
+        setRuta(puntos);
+        const ultimo = data[data.length - 1];
+        setUbicacion({ lat: ultimo.lat, lng: ultimo.lng });
+        setUltimaVez(new Date(ultimo.updated_at).toLocaleTimeString("es-BO"));
       }
     }
-    cargarUbicacion();
+    cargarRuta();
 
-    // Suscripción realtime
     const channel = supabase
       .channel(`ubicacion-${alumnoId}`)
       .on(
@@ -59,8 +63,14 @@ export default function MapaGPS({ alumnoId, alumnoNombre }: Props) {
         },
         (payload) => {
           const data = payload.new as any;
+          const nuevoPunto: [number, number] = [data.lat, data.lng];
           setUbicacion({ lat: data.lat, lng: data.lng });
           setUltimaVez(new Date(data.updated_at).toLocaleTimeString("es-BO"));
+          setRuta((prev) => [...prev, nuevoPunto]);
+          // Mover el mapa al nuevo punto
+          if (mapRef.current) {
+            mapRef.current.setView(nuevoPunto, mapRef.current.getZoom());
+          }
         },
       )
       .subscribe();
@@ -70,7 +80,6 @@ export default function MapaGPS({ alumnoId, alumnoNombre }: Props) {
     };
   }, [alumnoId]);
 
-  // Cargar Leaflet solo en cliente
   useEffect(() => {
     import("react-leaflet").then((rl) => {
       setMapComponent({
@@ -79,6 +88,8 @@ export default function MapaGPS({ alumnoId, alumnoNombre }: Props) {
         Marker: rl.Marker,
         Popup: rl.Popup,
         Circle: rl.Circle,
+        Polyline: rl.Polyline,
+        useMap: rl.useMap,
       });
     });
   }, []);
@@ -100,7 +111,17 @@ export default function MapaGPS({ alumnoId, alumnoNombre }: Props) {
       </div>
     );
 
-  const { MapContainer, TileLayer, Marker, Popup, Circle } = MapComponent;
+  const { MapContainer, TileLayer, Marker, Popup, Circle, Polyline } =
+    MapComponent;
+
+  // Componente interno para mover el mapa cuando cambia ubicación
+  function MapMover({ center }: { center: [number, number] }) {
+    const map = MapComponent.useMap();
+    useEffect(() => {
+      map.setView(center, map.getZoom(), { animate: true });
+    }, [center]);
+    return null;
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -122,12 +143,36 @@ export default function MapaGPS({ alumnoId, alumnoNombre }: Props) {
           center={[ubicacion.lat, ubicacion.lng]}
           zoom={15}
           style={{ height: "100%", width: "100%" }}
-          key={`${ubicacion.lat}-${ubicacion.lng}`}
+          ref={mapRef}
         >
           <TileLayer
             attribution="&copy; OpenStreetMap"
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+
+          {/* Ruta recorrida */}
+          {ruta.length > 1 && (
+            <Polyline
+              positions={ruta}
+              color="#f97316"
+              weight={4}
+              opacity={0.8}
+              dashArray="8 4"
+            />
+          )}
+
+          {/* Punto de inicio (verde) */}
+          {ruta.length > 1 && (
+            <Circle
+              center={ruta[0]}
+              radius={15}
+              color="#22c55e"
+              fillColor="#22c55e"
+              fillOpacity={0.8}
+            />
+          )}
+
+          {/* Posición actual */}
           <Circle
             center={[ubicacion.lat, ubicacion.lng]}
             radius={50}
@@ -138,20 +183,58 @@ export default function MapaGPS({ alumnoId, alumnoNombre }: Props) {
           <Marker position={[ubicacion.lat, ubicacion.lng]}>
             <Popup>{alumnoNombre}</Popup>
           </Marker>
+
+          <MapMover center={[ubicacion.lat, ubicacion.lng]} />
         </MapContainer>
       </div>
 
+      {/* Info */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
         <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center shrink-0">
           <span className="text-lg">📍</span>
         </div>
-        <div>
+        <div className="flex-1">
           <p className="font-black text-gray-900 text-sm">{alumnoNombre}</p>
           <p className="text-gray-400 text-xs">
             {ubicacion.lat.toFixed(6)}, {ubicacion.lng.toFixed(6)}
           </p>
         </div>
+        {ruta.length > 1 && (
+          <div className="text-right">
+            <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">
+              Recorrido
+            </p>
+            <p className="text-sm font-black text-gray-700">
+              {ruta.length} puntos
+            </p>
+          </div>
+        )}
       </div>
+
+      {/* Leyenda */}
+      {ruta.length > 1 && (
+        <div className="flex items-center gap-4 px-1">
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 bg-green-500 rounded-full" />
+            <span className="text-xs text-gray-400 font-medium">
+              Inicio recogida
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div
+              className="w-6 h-1 bg-orange-400 rounded"
+              style={{ borderTop: "2px dashed #f97316" }}
+            />
+            <span className="text-xs text-gray-400 font-medium">Ruta</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 bg-orange-500 rounded-full" />
+            <span className="text-xs text-gray-400 font-medium">
+              Posición actual
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

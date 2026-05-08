@@ -30,6 +30,30 @@ export default function RecogidaQRPage() {
   const [recogida, setRecogida] = useState<any>(null);
   const [usuario, setUsuario] = useState<any>(null);
   const [error, setError] = useState("");
+  const [recogidaId, setRecogidaId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (estado !== "exito" || !recogidaId || !alumno) return;
+    if (!navigator.geolocation) return;
+
+    const intervalo = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          await supabase.from("ubicaciones").insert({
+            alumno_id: alumno.id,
+            recogida_id: recogidaId,
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            updated_at: new Date().toISOString(),
+          });
+        },
+        null,
+        { enableHighAccuracy: true, timeout: 8000 },
+      );
+    }, 10000);
+
+    return () => clearInterval(intervalo);
+  }, [estado, recogidaId, alumno]);
 
   useEffect(() => {
     verificarToken();
@@ -120,7 +144,7 @@ export default function RecogidaQRPage() {
       usuario?.user_metadata?.full_name ?? usuario?.email ?? "Desconocido";
     const correo = usuario?.email ?? "";
 
-    await supabase
+    const { data: rec } = await supabase
       .from("recogidas_qr")
       .update({
         nombre_recogedor: nombre,
@@ -129,9 +153,10 @@ export default function RecogidaQRPage() {
         longitud: lng,
         escaneado_at: new Date().toISOString(),
       })
-      .eq("token", token);
+      .eq("token", token)
+      .select("id")
+      .single();
 
-    // Notificar a los tutores via realtime (insertar en notificaciones)
     await supabase.from("notificaciones_recogida").insert({
       alumno_id: alumno.id,
       nombre_recogedor: nombre,
@@ -141,6 +166,8 @@ export default function RecogidaQRPage() {
       recogido_at: new Date().toISOString(),
     });
 
+    // Guardar recogida_id para el tracking
+    if (rec?.id) setRecogidaId(rec.id);
     setEstado("exito");
   }
 
@@ -172,29 +199,40 @@ export default function RecogidaQRPage() {
           <CheckCircle2 size={48} className="text-white" />
         </div>
         {alumno && (
-          <div className="mb-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded-2xl flex items-center justify-center mx-auto mb-3 overflow-hidden">
-              {alumno.foto_url ? (
-                <img
-                  src={alumno.foto_url}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <span className="text-orange-500 font-black text-2xl">
-                  {alumno.nombre[0]}
-                </span>
-              )}
-            </div>
+          <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded-2xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
+            {alumno.foto_url ? (
+              <img
+                src={alumno.foto_url}
+                alt=""
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-orange-500 font-black text-2xl">
+                {alumno.nombre[0]}
+              </span>
+            )}
           </div>
         )}
         <h1 className="font-black text-gray-900 text-2xl mb-2">
           {alumno ? `${alumno.nombre} fue recogido` : "Recogida confirmada"}
         </h1>
-        <p className="text-green-600 font-bold text-sm">
+        <p className="text-green-600 font-bold text-sm mb-6">
           Los papás fueron notificados
         </p>
-        <p className="text-gray-400 text-xs mt-2">Podés cerrar esta página</p>
+        {recogidaId && (
+          <div className="bg-blue-50 border border-blue-100 rounded-2xl px-5 py-4 max-w-xs">
+            <div className="flex items-center gap-2 justify-center mb-1">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+              <p className="text-blue-700 font-black text-sm">
+                Compartiendo ubicación
+              </p>
+            </div>
+            <p className="text-blue-500 text-xs font-medium">
+              Los papás pueden ver tu recorrido en tiempo real. Se detiene
+              cuando cerrés esta página.
+            </p>
+          </div>
+        )}
       </div>
     );
 
