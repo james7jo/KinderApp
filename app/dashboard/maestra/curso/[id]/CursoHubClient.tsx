@@ -20,6 +20,7 @@ import {
   Shield,
   MapPin,
   User,
+  QrCode,
   CheckCircle2,
 } from "lucide-react";
 
@@ -714,6 +715,15 @@ export default function CursoHubClient({
       iconBg: "bg-amber-50",
       iconColor: "text-amber-500",
       hover: "hover:border-amber-200",
+    },
+    {
+      href: `/dashboard/maestra/curso/${cursoId}/recogida`,
+      label: "Recogida QR",
+      desc: "Control de salida",
+      icon: QrCode,
+      iconBg: "bg-teal-50",
+      iconColor: "text-teal-500",
+      hover: "hover:border-teal-200",
     },
   ];
 
