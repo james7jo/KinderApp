@@ -1,97 +1,120 @@
 "use client";
 import { useEffect, useRef } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 
-type Punto = { lat: number; lng: number; updated_at: string };
-
-// Fix de iconos de Leaflet en Next.js
-const fixLeafletIcons = () => {
-  delete (L.Icon.Default.prototype as any)._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl:
-      "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
-    iconUrl:
-      "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
-    shadowUrl:
-      "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
-  });
-};
+type Punto = { lat: number; lng: number; created_at: string };
 
 export default function MapaRecogida({
   ubicaciones,
 }: {
   ubicaciones: Punto[];
 }) {
-  const mapRef = useRef<L.Map | null>(null);
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const polilineaRef = useRef<L.Polyline | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const markerActualRef = useRef<maplibregl.Marker | null>(null);
+  const markerInicioRef = useRef<maplibregl.Marker | null>(null);
 
+  // Inicializar mapa
   useEffect(() => {
-    if (!mapContainerRef.current || ubicaciones.length === 0) return;
-    fixLeafletIcons();
+    if (!containerRef.current || mapRef.current) return;
+    if (ubicaciones.length === 0) return;
 
     const ultimo = ubicaciones[ubicaciones.length - 1];
 
-    if (!mapRef.current) {
-      mapRef.current = L.map(mapContainerRef.current, {
-        zoomControl: true,
-      }).setView([ultimo.lat, ultimo.lng], 16);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap",
-      }).addTo(mapRef.current);
-
-      // Punto de inicio en verde
-      const iconInicio = L.divIcon({
-        html: `<div style="background:#22c55e;width:14px;height:14px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,
-        className: "",
-        iconAnchor: [7, 7],
-      });
-      L.marker([ubicaciones[0].lat, ubicaciones[0].lng], { icon: iconInicio })
-        .bindPopup("Punto de inicio")
-        .addTo(mapRef.current);
-    }
-
-    // Actualizar polilínea (ruta)
-    const coords: [number, number][] = ubicaciones.map((u) => [u.lat, u.lng]);
-    if (polilineaRef.current) {
-      polilineaRef.current.setLatLngs(coords);
-    } else {
-      polilineaRef.current = L.polyline(coords, {
-        color: "#f97316",
-        weight: 4,
-        opacity: 0.8,
-      }).addTo(mapRef.current!);
-    }
-
-    // Marcador actual (naranja pulsante)
-    const iconActual = L.divIcon({
-      html: `<div style="background:#f97316;width:18px;height:18px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(249,115,22,0.5)"></div>`,
-      className: "",
-      iconAnchor: [9, 9],
+    mapRef.current = new maplibregl.Map({
+      container: containerRef.current,
+      style: "https://tiles.openfreemap.org/styles/liberty",
+      center: [ultimo.lng, ultimo.lat],
+      zoom: 16,
     });
-    if (markerRef.current) {
-      markerRef.current.setLatLng([ultimo.lat, ultimo.lng]);
-    } else {
-      markerRef.current = L.marker([ultimo.lat, ultimo.lng], {
-        icon: iconActual,
-      })
-        .bindPopup("Ubicación actual")
-        .addTo(mapRef.current!);
-    }
 
-    mapRef.current?.setView([ultimo.lat, ultimo.lng], mapRef.current.getZoom());
-  }, [ubicaciones]);
+    mapRef.current.addControl(new maplibregl.NavigationControl(), "top-right");
 
-  useEffect(() => {
+    mapRef.current.on("load", () => {
+      if (!mapRef.current) return;
+
+      // Source de la ruta
+      mapRef.current.addSource("ruta", {
+        type: "geojson",
+        data: {
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "LineString",
+            coordinates: ubicaciones.map((u) => [u.lng, u.lat]),
+          },
+        },
+      });
+
+      // Capa de la línea
+      mapRef.current.addLayer({
+        id: "ruta",
+        type: "line",
+        source: "ruta",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#f97316",
+          "line-width": 5,
+          "line-opacity": 0.85,
+        },
+      });
+
+      // Marcador inicio (verde)
+      const inicio = ubicaciones[0];
+      const elInicio = document.createElement("div");
+      elInicio.style.cssText =
+        "width:18px;height:18px;background:#22c55e;border:3px solid white;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.3)";
+      markerInicioRef.current = new maplibregl.Marker({ element: elInicio })
+        .setLngLat([inicio.lng, inicio.lat])
+        .setPopup(new maplibregl.Popup().setText("Punto de inicio"))
+        .addTo(mapRef.current);
+
+      // Marcador actual (naranja con pulso)
+      const elActual = document.createElement("div");
+      elActual.innerHTML = `
+        <div style="position:relative;width:24px;height:24px;">
+          <div style="position:absolute;inset:0;background:#f97316;border-radius:50%;animation:pulso 1.5s infinite;opacity:0.6"></div>
+          <div style="position:relative;width:24px;height:24px;background:#f97316;border:3px solid white;border-radius:50%;box-shadow:0 2px 12px rgba(249,115,22,0.6)"></div>
+        </div>
+        <style>@keyframes pulso{0%{transform:scale(1);opacity:0.6}100%{transform:scale(2);opacity:0}}</style>
+      `;
+      markerActualRef.current = new maplibregl.Marker({ element: elActual })
+        .setLngLat([ultimo.lng, ultimo.lat])
+        .setPopup(new maplibregl.Popup().setText("Ubicación actual"))
+        .addTo(mapRef.current);
+    });
+
     return () => {
       mapRef.current?.remove();
       mapRef.current = null;
     };
   }, []);
 
-  return (
-    <div ref={mapContainerRef} style={{ width: "100%", height: "100%" }} />
-  );
+  // Actualizar ruta y marcador cuando llegan nuevas ubicaciones
+  useEffect(() => {
+    if (!mapRef.current || ubicaciones.length === 0) return;
+    const map = mapRef.current;
+    if (!map.loaded() || !map.getSource("ruta")) return;
+
+    const source = map.getSource("ruta") as maplibregl.GeoJSONSource;
+    source.setData({
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "LineString",
+        coordinates: ubicaciones.map((u) => [u.lng, u.lat]),
+      },
+    });
+
+    const ultimo = ubicaciones[ubicaciones.length - 1];
+    if (markerActualRef.current) {
+      markerActualRef.current.setLngLat([ultimo.lng, ultimo.lat]);
+    }
+
+    // Mover mapa suavemente al último punto
+    map.easeTo({ center: [ultimo.lng, ultimo.lat], duration: 800 });
+  }, [ubicaciones]);
+
+  return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
 }

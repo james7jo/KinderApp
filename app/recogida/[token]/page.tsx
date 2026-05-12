@@ -7,18 +7,19 @@ import {
   CheckCircle2,
   Loader2,
   AlertCircle,
-  LogIn,
+  AlertTriangle,
 } from "lucide-react";
+import PantallaRastreo from "./PantallaRastreo";
 
 type Estado =
   | "cargando"
-  | "listo"
+  | "expirado"
+  | "ya_escaneado"
+  | "finalizado"
+  | "login"
   | "autenticando"
-  | "ubicacion"
-  | "guardando"
-  | "exito"
-  | "error"
-  | "expirado";
+  | "permisos"
+  | "rastreando";
 
 export default function RecogidaQRPage() {
   const params = useParams();
@@ -30,44 +31,20 @@ export default function RecogidaQRPage() {
   const [recogida, setRecogida] = useState<any>(null);
   const [usuario, setUsuario] = useState<any>(null);
   const [error, setError] = useState("");
-  const [recogidaId, setRecogidaId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (estado !== "exito" || !recogidaId || !alumno) return;
-    if (!navigator.geolocation) return;
-
-    const intervalo = setInterval(() => {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          await supabase.from("ubicaciones").insert({
-            alumno_id: alumno.id,
-            recogida_id: recogidaId,
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            updated_at: new Date().toISOString(),
-          });
-        },
-        null,
-        { enableHighAccuracy: true, timeout: 8000 },
-      );
-    }, 10000);
-
-    return () => clearInterval(intervalo);
-  }, [estado, recogidaId, alumno]);
 
   useEffect(() => {
     verificarToken();
-    // Verificar si ya hay sesión de Google
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) setUsuario(session.user);
     });
-    // Escuchar cambio de auth (después de redirect de Google)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_, session) => {
       if (session?.user) {
         setUsuario(session.user);
-        setEstado("ubicacion");
+        setEstado((prev) =>
+          prev === "login" || prev === "autenticando" ? "permisos" : prev,
+        );
       }
     });
     return () => subscription.unsubscribe();
@@ -78,10 +55,9 @@ export default function RecogidaQRPage() {
       .from("recogidas_qr")
       .select(`*, alumnos(id, nombre, apellido, foto_url, cursos(nombre))`)
       .eq("token", token)
-      .eq("activo", true)
       .single();
 
-    if (error || !data) {
+    if (error || !data || !data.activo) {
       setEstado("expirado");
       return;
     }
@@ -89,23 +65,34 @@ export default function RecogidaQRPage() {
       setEstado("expirado");
       return;
     }
-    if (data.escaneado_at) {
-      setEstado("exito");
+    if (data.finalizado) {
+      setEstado("finalizado");
       setAlumno(data.alumnos);
       return;
     }
 
+    if (data.escaneado_at) {
+      const ultimoPing = data.ultimo_ping ? new Date(data.ultimo_ping) : null;
+      const segundosSinPing = ultimoPing
+        ? (Date.now() - ultimoPing.getTime()) / 1000
+        : 999;
+      if (segundosSinPing < 60) {
+        setEstado("ya_escaneado");
+        setAlumno(data.alumnos);
+        return;
+      }
+    }
+
     setRecogida(data);
     setAlumno(data.alumnos);
-
     const {
       data: { session },
     } = await supabase.auth.getSession();
     if (session?.user) {
       setUsuario(session.user);
-      setEstado("ubicacion");
+      setEstado("permisos");
     } else {
-      setEstado("listo");
+      setEstado("login");
     }
   }
 
@@ -115,63 +102,63 @@ export default function RecogidaQRPage() {
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/recogida/${token}`,
-        queryParams: { access_type: "offline", prompt: "consent" },
         scopes: "email profile",
       },
     });
     if (error) {
       setError("Error al conectar con Google");
-      setEstado("listo");
+      setEstado("login");
     }
   }
 
-  async function pedirUbicacion() {
-    setEstado("ubicacion");
+  async function activarRastreo() {
     if (!navigator.geolocation) {
-      confirmarRecogida(null, null);
+      setError("Tu dispositivo no soporta GPS");
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => confirmarRecogida(pos.coords.latitude, pos.coords.longitude),
-      () => confirmarRecogida(null, null),
-      { timeout: 10000, enableHighAccuracy: true },
+      async (pos) => {
+        const nombre =
+          usuario?.user_metadata?.full_name ?? usuario?.email ?? "Desconocido";
+        const correo = usuario?.email ?? "";
+
+        await supabase
+          .from("recogidas_qr")
+          .update({
+            nombre_recogedor: nombre,
+            correo_recogedor: correo,
+            latitud: pos.coords.latitude,
+            longitud: pos.coords.longitude,
+            escaneado_at: new Date().toISOString(),
+            ultimo_ping: new Date().toISOString(),
+          })
+          .eq("token", token);
+
+        await supabase.from("notificaciones_recogida").insert({
+          alumno_id: alumno.id,
+          nombre_recogedor: nombre,
+          correo_recogedor: correo,
+          latitud: pos.coords.latitude,
+          longitud: pos.coords.longitude,
+          recogido_at: new Date().toISOString(),
+        });
+
+        const { data: refreshed } = await supabase
+          .from("recogidas_qr")
+          .select("*")
+          .eq("token", token)
+          .single();
+        if (refreshed) setRecogida(refreshed);
+        setEstado("rastreando");
+      },
+      () =>
+        setError(
+          "Necesitamos permiso de ubicación. Activá GPS y volvé a intentar.",
+        ),
+      { enableHighAccuracy: true, timeout: 10000 },
     );
   }
 
-  async function confirmarRecogida(lat: number | null, lng: number | null) {
-    setEstado("guardando");
-    const nombre =
-      usuario?.user_metadata?.full_name ?? usuario?.email ?? "Desconocido";
-    const correo = usuario?.email ?? "";
-
-    const { data: rec } = await supabase
-      .from("recogidas_qr")
-      .update({
-        nombre_recogedor: nombre,
-        correo_recogedor: correo,
-        latitud: lat,
-        longitud: lng,
-        escaneado_at: new Date().toISOString(),
-      })
-      .eq("token", token)
-      .select("id")
-      .single();
-
-    await supabase.from("notificaciones_recogida").insert({
-      alumno_id: alumno.id,
-      nombre_recogedor: nombre,
-      correo_recogedor: correo,
-      latitud: lat,
-      longitud: lng,
-      recogido_at: new Date().toISOString(),
-    });
-
-    // Guardar recogida_id para el tracking
-    if (rec?.id) setRecogidaId(rec.id);
-    setEstado("exito");
-  }
-
-  // ── VISTAS ──────────────────────────────────────────────────────────────────
   if (estado === "cargando")
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center font-nunito">
@@ -187,59 +174,51 @@ export default function RecogidaQRPage() {
         </div>
         <h1 className="font-black text-gray-900 text-2xl mb-2">QR expirado</h1>
         <p className="text-gray-400 text-sm max-w-xs">
-          Este código ya no es válido. La maestra debe generar uno nuevo.
+          Pedile a la maestra que genere uno nuevo.
         </p>
       </div>
     );
 
-  if (estado === "exito")
+  if (estado === "ya_escaneado")
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center font-nunito px-6 text-center">
+        <div className="w-20 h-20 bg-amber-50 rounded-3xl flex items-center justify-center mb-5">
+          <AlertTriangle size={36} className="text-amber-500" />
+        </div>
+        <h1 className="font-black text-gray-900 text-2xl mb-2">QR ya activo</h1>
+        <p className="text-gray-400 text-sm max-w-xs leading-relaxed">
+          Este código ya está siendo usado en otro dispositivo.
+        </p>
+      </div>
+    );
+
+  if (estado === "finalizado")
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center font-nunito px-6 text-center">
         <div className="w-24 h-24 bg-green-500 rounded-3xl flex items-center justify-center mb-6 shadow-xl shadow-green-200">
           <CheckCircle2 size={48} className="text-white" />
         </div>
-        {alumno && (
-          <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded-2xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
-            {alumno.foto_url ? (
-              <img
-                src={alumno.foto_url}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <span className="text-orange-500 font-black text-2xl">
-                {alumno.nombre[0]}
-              </span>
-            )}
-          </div>
-        )}
         <h1 className="font-black text-gray-900 text-2xl mb-2">
-          {alumno ? `${alumno.nombre} fue recogido` : "Recogida confirmada"}
+          {alumno?.nombre} ya fue entregado
         </h1>
-        <p className="text-green-600 font-bold text-sm mb-6">
-          Los papás fueron notificados
-        </p>
-        {recogidaId && (
-          <div className="bg-blue-50 border border-blue-100 rounded-2xl px-5 py-4 max-w-xs">
-            <div className="flex items-center gap-2 justify-center mb-1">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-              <p className="text-blue-700 font-black text-sm">
-                Compartiendo ubicación
-              </p>
-            </div>
-            <p className="text-blue-500 text-xs font-medium">
-              Los papás pueden ver tu recorrido en tiempo real. Se detiene
-              cuando cerrés esta página.
-            </p>
-          </div>
-        )}
+        <p className="text-gray-400 text-sm">Esta recogida ya finalizó.</p>
       </div>
     );
 
+  if (estado === "rastreando" && recogida && alumno) {
+    return (
+      <PantallaRastreo
+        recogidaId={recogida.id}
+        token={token}
+        alumno={alumno}
+        usuario={usuario}
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 font-nunito flex flex-col items-center justify-center px-5">
+    <div className="min-h-screen bg-gray-50 font-nunito flex flex-col items-center justify-center px-5 py-8">
       <div className="w-full max-w-sm">
-        {/* Header naranja */}
         <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-3xl p-6 mb-5 text-white text-center shadow-xl shadow-orange-200">
           {alumno?.foto_url ? (
             <img
@@ -254,23 +233,20 @@ export default function RecogidaQRPage() {
               </span>
             </div>
           )}
-          <h1 className="font-black text-2xl">
+          <h1 className="font-black text-2xl leading-tight">
             {alumno?.nombre} {alumno?.apellido}
           </h1>
           <p className="text-orange-100 text-sm mt-1">
             {alumno?.cursos?.nombre}
           </p>
           <div className="mt-3 bg-white/20 rounded-xl px-4 py-2">
-            <p className="text-white text-xs font-bold">
-              Confirmá que estás recogiendo a este niño
-            </p>
+            <p className="text-white text-xs font-bold">Recogida en curso</p>
           </div>
         </div>
 
-        {/* Paso 1: Login Google */}
-        {(estado === "listo" || estado === "autenticando") && (
+        {(estado === "login" || estado === "autenticando") && (
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 text-center">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 text-center">
               Paso 1 — Identificate
             </p>
             <p className="text-sm text-gray-600 text-center mb-5 font-medium leading-relaxed">
@@ -316,10 +292,8 @@ export default function RecogidaQRPage() {
           </div>
         )}
 
-        {/* Paso 2: Ubicación */}
-        {(estado === "ubicacion" || estado === "guardando") && usuario && (
+        {estado === "permisos" && usuario && (
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-            {/* Usuario identificado */}
             <div className="flex items-center gap-3 bg-green-50 border border-green-100 rounded-xl p-3 mb-4">
               {usuario.user_metadata?.avatar_url && (
                 <img
@@ -339,29 +313,27 @@ export default function RecogidaQRPage() {
               <CheckCircle2 size={16} className="text-green-500 shrink-0" />
             </div>
 
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 text-center">
-              Paso 2 — Confirmá la recogida
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 text-center">
+              Paso 2 — Activar GPS
             </p>
             <p className="text-sm text-gray-600 text-center mb-5 font-medium leading-relaxed">
-              Al confirmar compartís tu ubicación actual con los papás
+              Compartí tu ubicación en tiempo real con los papás durante todo el
+              trayecto
             </p>
+
             <button
-              onClick={pedirUbicacion}
-              disabled={estado === "guardando"}
-              className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white font-black py-4 rounded-xl transition-all active:scale-95 shadow-sm shadow-orange-200 flex items-center justify-center gap-2"
+              onClick={activarRastreo}
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-xl transition-all active:scale-95 shadow-sm shadow-orange-200 flex items-center justify-center gap-2"
             >
-              {estado === "guardando" ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" /> Confirmando...
-                </>
-              ) : (
-                <>
-                  <MapPin size={18} /> Confirmar recogida
-                </>
-              )}
+              <MapPin size={18} /> Iniciar rastreo GPS
             </button>
-            <p className="text-[10px] text-gray-400 text-center mt-3 font-medium">
-              Se pedirá permiso de ubicación — podés aceptar o denegar
+            {error && (
+              <p className="text-red-500 text-xs font-bold text-center mt-3">
+                {error}
+              </p>
+            )}
+            <p className="text-[10px] text-gray-400 text-center mt-3 font-medium leading-relaxed">
+              Mantené esta pantalla abierta durante el trayecto.
             </p>
           </div>
         )}
