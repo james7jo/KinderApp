@@ -3,9 +3,6 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 
-const MapaGPS = dynamic(() => import("@/components/gps/MapaGPS"), {
-  ssr: false,
-});
 import {
   Users,
   BookOpen,
@@ -507,20 +504,6 @@ function ModalAlumno({
           )}
 
           {/* TAB GPS */}
-          {tab === "gps" && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Navigation size={15} className="text-orange-500" />
-                <p className="text-xs font-black text-gray-500 uppercase tracking-widest">
-                  Ubicación en tiempo real
-                </p>
-              </div>
-              <MapaGPS
-                alumnoId={alumno.id}
-                alumnoNombre={`${alumno.nombre} ${alumno.apellido}`}
-              />
-            </div>
-          )}
 
           {/* Padding final para que el último elemento no quede pegado al borde */}
           <div className="h-4" />
