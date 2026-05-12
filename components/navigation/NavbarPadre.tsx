@@ -85,11 +85,6 @@ export default function NavbarPadre({
       label: "GPS en vivo",
       icon: MapPin,
     },
-    {
-      href: `/dashboard/padre/hijo/${hijoId}/gps/alertas`,
-      label: "Alertas recogida",
-      icon: Bell,
-    },
   ];
   return (
     <>

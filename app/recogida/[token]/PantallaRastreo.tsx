@@ -94,7 +94,14 @@ export default function PantallaRastreo({
 
   // ── GPS continuo con watchPosition ──
   useEffect(() => {
-    if (finalizado) return;
+    if (finalizado) {
+      // Limpiar watchPosition al finalizar
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      return;
+    }
     if (!navigator.geolocation) {
       setError("GPS no disponible");
       return;
@@ -158,9 +165,15 @@ export default function PantallaRastreo({
       })
       .eq("id", recogidaId);
 
-    if (watchIdRef.current !== null)
+    // Limpiar TODO antes de marcar finalizado
+    if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
-    wakeLockRef.current?.release();
+      watchIdRef.current = null;
+    }
+    try {
+      await wakeLockRef.current?.release();
+    } catch {}
+    wakeLockRef.current = null;
     setFinalizado(true);
     setFinalizando(false);
   }
