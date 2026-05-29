@@ -725,6 +725,15 @@ export default function CursoHubClient({
       iconColor: "text-teal-500",
       hover: "hover:border-teal-200",
     },
+    {
+      href: `/dashboard/maestra/curso/${cursoId}/evaluacion-cosmos`,
+      label: "Evaluación Cosmos",
+      desc: "Seguimiento curricular",
+      icon: BookOpen,
+      iconBg: "bg-orange-50",
+      iconColor: "text-orange-500",
+      hover: "hover:border-orange-200",
+    },
   ];
 
   return (
