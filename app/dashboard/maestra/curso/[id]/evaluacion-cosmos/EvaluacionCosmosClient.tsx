@@ -156,6 +156,7 @@ export default function EvaluacionCosmosClient({
   }, [campoActivo, contenidosPDF]);
 
   // 3. Métricas acumulativas corregidas
+  // 3. Métricas acumulativas corregidas a la escala real de 85 puntos
   const metricasFinales = useMemo(() => {
     const idCampoNumerico = MAPA_CAMPOS[campoActivo] || 1;
     const indicadoresActuales = (contenidosPDF || []).filter(
@@ -168,8 +169,6 @@ export default function EvaluacionCosmosClient({
       countSaber = 0;
     let sumaHacer = 0,
       countHacer = 0;
-    let sumaDecidir = 0,
-      countDecidir = 0;
 
     indicadoresActuales.forEach((ind) => {
       if (!ind) return;
@@ -190,36 +189,31 @@ export default function EvaluacionCosmosClient({
         sumaHacer += notaVal;
         countHacer++;
       }
-      if (dim === "decidir") {
-        sumaDecidir += notaVal;
-        countDecidir++;
-      }
     });
 
     const totalSer = countSer > 0 ? Math.round(sumaSer / countSer) : 0;
     const totalSaber = countSaber > 0 ? Math.round(sumaSaber / countSaber) : 0;
     const totalHacer = countHacer > 0 ? Math.round(sumaHacer / countHacer) : 0;
-    const totalDecidir =
-      countDecidir > 0 ? Math.round(sumaDecidir / countDecidir) : 0;
 
-    const notaFinal = totalSer + totalSaber + totalHacer + totalDecidir;
+    // Suma real sobre 85 puntos máximos por campo
+    const notaFinal = totalSer + totalSaber + totalHacer;
 
     let escala = {
       label: "Sin evaluar",
       color: "text-gray-400 bg-gray-50 border-gray-100",
     };
     if (notaFinal > 0) {
-      if (notaFinal <= 50)
+      if (notaFinal <= 42)
         escala = {
           label: "En Desarrollo (ED)",
           color: "text-red-600 bg-red-50 border-red-100",
         };
-      else if (notaFinal <= 68)
+      else if (notaFinal <= 58)
         escala = {
           label: "Desarrollo Aceptable (DA)",
           color: "text-amber-600 bg-amber-50 border-amber-100",
         };
-      else if (notaFinal <= 84)
+      else if (notaFinal <= 72)
         escala = {
           label: "Desarrollo Óptimo (DO)",
           color: "text-indigo-600 bg-indigo-50 border-indigo-100",
@@ -231,44 +225,40 @@ export default function EvaluacionCosmosClient({
         };
     }
 
-    return {
-      totalSer,
-      totalSaber,
-      totalHacer,
-      totalDecidir,
-      notaFinal,
-      escala,
-    };
+    return { totalSer, totalSaber, totalHacer, notaFinal, escala };
   }, [campoActivo, contenidosPDF, notasDinamicas]);
 
-  // 🚀 FUNCIÓN DE GUARDADO EN LA BASE DE DATOS (SEMANAL)
+  // 🚀 FUNCIÓN DE GUARDADO ULTRA PURGADA (SIN LA COLUMNA NOTA_DECIDIR QUE VIOLA EL CHECK)
   const handleGuardarEvaluacion = async () => {
     if (!alumnoSeleccionado) return;
     setGuardando(true);
     setMensajeEstado(null);
 
-    const idCampoNumerico = MAPA_CAMPOS[campoActivo] || 1;
+    const idContenidoValido = MAPA_CAMPOS[campoActivo] || 1;
 
     try {
-      const { error } = await supabase.from("observacion_semanal").upsert(
+      const { error } = await supabase.from("evaluaciones_semanales").upsert(
         {
           alumno_id: alumnoSeleccionado.id,
           curso_id: cursoId,
           maestra_id: maestraId,
-          gestion: gestion,
+          colegio_id: "a42cef58-9fec-4dcb-b469-f33630d878e8",
+          contenido_id: idContenidoValido,
+          semana_evaluada: semana,
           trimestre: trimestre,
-          semana: semana,
-          campo_id: idCampoNumerico,
+          gestion: gestion,
+
+          // Enviamos solo lo que calcula tu interfaz:
           nota_ser: metricasFinales.totalSer,
           nota_saber: metricasFinales.totalSaber,
           nota_hacer: metricasFinales.totalHacer,
-          nota_decidir: metricasFinales.totalDecidir,
-          nota_final: metricasFinales.notaFinal,
+
+          // ❌ ELIMINADA 'nota_decidir' PARA QUE NO SALTE EL CHECK CONSTRAINT "evaluaciones_semanales_nota_decidir_check"
+
           observacion: observacion.trim(),
         },
         {
-          // Llave única compuesta para evitar duplicar registros en el mismo periodo
-          onConflict: "alumno_id,curso_id,gestion,trimestre,semana,campo_id",
+          onConflict: "alumno_id,semana_evaluada,contenido_id",
         },
       );
 
@@ -278,7 +268,7 @@ export default function EvaluacionCosmosClient({
         tipo: "exito",
         texto: `Evaluación de la Semana ${semana} guardada correctamente.`,
       });
-      setObservacion(""); // Limpiamos cuadro de notas de texto
+      setObservacion("");
     } catch (err: any) {
       console.error(err);
       setMensajeEstado({
@@ -497,7 +487,10 @@ export default function EvaluacionCosmosClient({
                     </p>
                     <p className="text-lg font-black font-mono leading-none mt-0.5">
                       {metricasFinales.notaFinal}
-                      <span className="text-xs font-bold opacity-60">/100</span>
+                      <span className="text-xs font-bold opacity-60">
+                        /85
+                      </span>{" "}
+                      {/* <-- Cambiado a /85 */}
                     </p>
                   </div>
                 </div>
