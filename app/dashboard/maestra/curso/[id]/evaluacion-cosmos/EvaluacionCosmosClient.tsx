@@ -1,245 +1,289 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import {
   ArrowLeft,
-  BookOpen,
-  User,
-  Check,
+  Search,
   Save,
-  Loader2,
-  AlertCircle,
-  HelpCircle,
-  Clock,
   X,
+  BookOpen,
+  Heart,
+  Leaf,
+  Lightbulb,
+  User,
+  AlertTriangle,
+  Loader2,
+  ChevronRight,
 } from "lucide-react";
 
-type Alumno = {
+type CampoId = "cosmos" | "comunidad" | "vida" | "tecnologia";
+
+const MAPA_CAMPOS: Record<CampoId, number> = {
+  cosmos: 1,
+  comunidad: 2,
+  vida: 3,
+  tecnologia: 4,
+};
+
+interface Alumno {
   id: string;
   nombre: string;
   apellido: string;
-  foto_url?: string | null;
-};
+  foto_url?: string;
+}
 
-type ContenidoPDF = {
+interface IndicadorBD {
   id: string;
-  trimestre: number;
-  titulo_tematico: string;
-  contenidos_detalle: string[]; // Array JSONB de indicadores del Ministerio
-};
+  campo_id: number;
+  tematica: string;
+  dimension: "ser" | "saber" | "hacer" | "decidir";
+  criterio: string;
+}
 
-type EvaluacionExistente = {
-  alumno_id: string;
-  trimestre: number;
-  semana: number;
-  contenido_id: string;
-  indicador_indice: number;
-  nivel_logro_id: number;
-  descripcion: string;
-};
-
-interface Props {
+interface EvaluacionCosmosClientProps {
   cursoId: string;
   cursoNombre: string;
   colegioId: string;
   maestraId: string;
   alumnos: Alumno[];
-  contenidosPDF: ContenidoPDF[];
-  evaluacionesExistentes: EvaluacionExistente[];
+  contenidosPDF: IndicadorBD[];
+  evaluacionesExistentes: any[];
   gestion: number;
 }
 
 export default function EvaluacionCosmosClient({
   cursoId,
   cursoNombre,
-  colegioId,
   maestraId,
-  alumnos,
-  contenidosPDF,
-  evaluacionesExistentes,
+  alumnos = [],
+  contenidosPDF = [],
   gestion,
-}: Props) {
+}: EvaluacionCosmosClientProps) {
   const supabase = createClient();
-  const router = useRouter();
 
-  // Estados de los filtros principales
-  const [alumnoSeleccionado, setAlumnoSeleccionado] = useState<string>(
-    alumnos[0]?.id ?? "",
+  const [search, setSearch] = useState("");
+  const [alumnoSeleccionado, setAlumnoSeleccionado] = useState<Alumno | null>(
+    null,
   );
+  const [campoActivo, setCampoActivo] = useState<CampoId>("cosmos");
+
+  // Selectores de tiempo pedagógico
   const [trimestre, setTrimestre] = useState<number>(1);
   const [semana, setSemana] = useState<number>(1);
 
-  // Estados de UI y guardado
+  const [notasDinamicas, setNotasDinamicas] = useState<Record<string, number>>(
+    {},
+  );
+  const [observacion, setObservacion] = useState("");
   const [guardando, setGuardando] = useState(false);
-  const [notificacion, setNotificacion] = useState<{
+  const [mensajeEstado, setMensajeEstado] = useState<{
+    tipo: "exito" | "error";
     texto: string;
-    error: boolean;
   } | null>(null);
 
-  // Matriz de evaluaciones locales en el formulario
-  // Estructura de llave primaria compuesta: "contenidoId-indicadorIndex"
-  const [evaluacionesForm, setEvaluacionesForm] = useState<
-    Record<string, { logroId: number; obs: string }>
-  >({});
+  // 1. Filtro de búsqueda de alumnos
+  const alumnosFiltrados = useMemo(() => {
+    const lista = alumnos || [];
+    const textoBusqueda = (search || "").toLowerCase().trim();
 
-  // 1. Filtrar los bloques temáticos del PDF según el trimestre seleccionado en la pantalla
-  const contenidosFiltrados = useMemo(() => {
-    return contenidosPDF.filter((c) => c.trimestre === trimestre);
-  }, [contenidosPDF, trimestre]);
-
-  // 2. Cada vez que cambie el alumno, trimestre o semana, cargar los datos que ya estén guardados en Supabase
-  useEffect(() => {
-    const mapeoInicial: Record<string, { logroId: number; obs: string }> = {};
-
-    // Inicializar el formulario con lo que esté en blanco
-    contenidosFiltrados.forEach((bloque) => {
-      bloque.contenidos_detalle.forEach((_, index) => {
-        mapeoInicial[`${bloque.id}-${index}`] = { logroId: 0, obs: "" };
-      });
+    return lista.filter((a) => {
+      const nombreCompleto =
+        `${a?.nombre || ""} ${a?.apellido || ""}`.toLowerCase();
+      return nombreCompleto.includes(textoBusqueda);
     });
+  }, [search, alumnos]);
 
-    // Sobreponer los registros reales que ya existen en la base de datos
-    evaluacionesExistentes.forEach((evalBD) => {
+  const camposNavbar = [
+    { id: "cosmos", label: "Cosmos", icon: BookOpen, color: "text-orange-500" },
+    {
+      id: "comunidad",
+      label: "Comunidad",
+      icon: Heart,
+      color: "text-violet-500",
+    },
+    { id: "vida", label: "Vida", icon: Leaf, color: "text-emerald-500" },
+    {
+      id: "tecnologia",
+      label: "Tecnología",
+      icon: Lightbulb,
+      color: "text-sky-500",
+    },
+  ];
+
+  // 2. Motor de agrupación por temáticas
+  const estructuraCurricularDelCampo = useMemo(() => {
+    const idCampoNumerico = MAPA_CAMPOS[campoActivo] || 1;
+    const indicadoresDelCampo = (contenidosPDF || []).filter(
+      (item) => item && item.campo_id === idCampoNumerico,
+    );
+
+    const agrupado: Record<
+      string,
+      {
+        ser: IndicadorBD[];
+        saber: IndicadorBD[];
+        hacer: IndicadorBD[];
+        decidir: IndicadorBD[];
+      }
+    > = {};
+
+    indicadoresDelCampo.forEach((ind) => {
+      if (!ind) return;
+      const tema = ind.tematica || "Contenido General";
+      const dimLimpia = String(ind.dimension || "saber")
+        .toLowerCase()
+        .trim();
+
+      if (!agrupado[tema]) {
+        agrupado[tema] = { ser: [], saber: [], hacer: [], decidir: [] };
+      }
+
       if (
-        evalBD.alumno_id === alumnoSeleccionado &&
-        evalBD.trimestre === trimestre &&
-        evalBD.semana === semana
+        dimLimpia === "ser" ||
+        dimLimpia === "saber" ||
+        dimLimpia === "hacer" ||
+        dimLimpia === "decidir"
       ) {
-        mapeoInicial[`${evalBD.contenido_id}-${evalBD.indicador_indice}`] = {
-          logroId: evalBD.nivel_logro_id,
-          obs:
-            evalBD.descripcion === "Sin observación" ? "" : evalBD.descripcion,
-        };
+        agrupado[tema][dimLimpia].push(ind);
+      } else {
+        agrupado[tema]["saber"].push(ind);
       }
     });
 
-    setEvaluacionesForm(mapeoInicial);
-    setNotificacion(null);
-  }, [
-    alumnoSeleccionado,
-    trimestre,
-    semana,
-    contenidosFiltrados,
-    evaluacionesExistentes,
-  ]);
+    return agrupado;
+  }, [campoActivo, contenidosPDF]);
 
-  // Handler para marcar los botones de evaluación rápida (✓ / ◐ / ✗)
-  const handleCambioLogro = (
-    contenidoId: string,
-    indicadorIndex: number,
-    logroId: number,
-  ) => {
-    const key = `${contenidoId}-${indicadorIndex}`;
-    setEvaluacionesForm((prev) => ({
-      ...prev,
-      [key]: { ...prev[key], logroId },
-    }));
-  };
+  // 3. Métricas acumulativas corregidas
+  const metricasFinales = useMemo(() => {
+    const idCampoNumerico = MAPA_CAMPOS[campoActivo] || 1;
+    const indicadoresActuales = (contenidosPDF || []).filter(
+      (item) => item && item.campo_id === idCampoNumerico,
+    );
 
-  // Handler para actualizar la caja de texto de observaciones
-  const handleCambioObservacion = (
-    contenidoId: string,
-    indicadorIndex: number,
-    texto: string,
-  ) => {
-    const key = `${contenidoId}-${indicadorIndex}`;
-    setEvaluacionesForm((prev) => ({
-      ...prev,
-      [key]: { ...prev[key], obs: texto },
-    }));
-  };
+    let sumaSer = 0,
+      countSer = 0;
+    let sumaSaber = 0,
+      countSaber = 0;
+    let sumaHacer = 0,
+      countHacer = 0;
+    let sumaDecidir = 0,
+      countDecidir = 0;
 
-  // Acción del botón guardar
-  const guardarEvaluacionSemanal = async () => {
-    if (!alumnoSeleccionado) {
-      setNotificacion({
-        texto: "Por favor selecciona un alumno primero.",
-        error: true,
-      });
-      return;
+    indicadoresActuales.forEach((ind) => {
+      if (!ind) return;
+      const notaVal = notasDinamicas[ind.id] || 0;
+      const dim = String(ind.dimension || "saber")
+        .toLowerCase()
+        .trim();
+
+      if (dim === "ser") {
+        sumaSer += notaVal;
+        countSer++;
+      }
+      if (dim === "saber") {
+        sumaSaber += notaVal;
+        countSaber++;
+      }
+      if (dim === "hacer") {
+        sumaHacer += notaVal;
+        countHacer++;
+      }
+      if (dim === "decidir") {
+        sumaDecidir += notaVal;
+        countDecidir++;
+      }
+    });
+
+    const totalSer = countSer > 0 ? Math.round(sumaSer / countSer) : 0;
+    const totalSaber = countSaber > 0 ? Math.round(sumaSaber / countSaber) : 0;
+    const totalHacer = countHacer > 0 ? Math.round(sumaHacer / countHacer) : 0;
+    const totalDecidir =
+      countDecidir > 0 ? Math.round(sumaDecidir / countDecidir) : 0;
+
+    const notaFinal = totalSer + totalSaber + totalHacer + totalDecidir;
+
+    let escala = {
+      label: "Sin evaluar",
+      color: "text-gray-400 bg-gray-50 border-gray-100",
+    };
+    if (notaFinal > 0) {
+      if (notaFinal <= 50)
+        escala = {
+          label: "En Desarrollo (ED)",
+          color: "text-red-600 bg-red-50 border-red-100",
+        };
+      else if (notaFinal <= 68)
+        escala = {
+          label: "Desarrollo Aceptable (DA)",
+          color: "text-amber-600 bg-amber-50 border-amber-100",
+        };
+      else if (notaFinal <= 84)
+        escala = {
+          label: "Desarrollo Óptimo (DO)",
+          color: "text-indigo-600 bg-indigo-50 border-indigo-100",
+        };
+      else
+        escala = {
+          label: "Desarrollo Pleno (DP)",
+          color: "text-emerald-600 bg-emerald-50 border-emerald-100",
+        };
     }
 
+    return {
+      totalSer,
+      totalSaber,
+      totalHacer,
+      totalDecidir,
+      notaFinal,
+      escala,
+    };
+  }, [campoActivo, contenidosPDF, notasDinamicas]);
+
+  // 🚀 FUNCIÓN DE GUARDADO EN LA BASE DE DATOS (SEMANAL)
+  const handleGuardarEvaluacion = async () => {
+    if (!alumnoSeleccionado) return;
     setGuardando(true);
-    setNotificacion(null);
+    setMensajeEstado(null);
+
+    const idCampoNumerico = MAPA_CAMPOS[campoActivo] || 1;
 
     try {
-      const registrosAInsertar = [];
-
-      // Recorrer los criterios del formulario para empaquetar los inserts
-      for (const bloque of contenidosFiltrados) {
-        for (let idx = 0; idx < bloque.contenidos_detalle.length; idx++) {
-          const indicadorTexto = bloque.contenidos_detalle[idx];
-          const estadoForm = evaluacionesForm[`${bloque.id}-${idx}`];
-
-          // Si la maestra no ha evaluado este indicador aún, nos lo saltamos
-          if (!estadoForm || estadoForm.logroId === 0) continue;
-
-          // Asignar los puntajes estimados requeridos según la escala oficial
-          let puntaje = 25; // No logrado (id=3)
-          if (estadoForm.logroId === 1) puntaje = 85; // Logrado
-          if (estadoForm.logroId === 2) puntaje = 55; // En proceso
-
-          registrosAInsertar.push({
-            alumno_id: alumnoSeleccionado,
-            maestra_id: maestraId,
-            curso_id: cursoId,
-            colegio_id: colegioId,
-            gestion: gestion,
-            trimestre: trimestre,
-            semana: semana,
-            campo_id: 1, // Cosmos y Pensamiento
-            contenido_id: bloque.id,
-            indicador_texto: indicadorTexto,
-            indicador_indice: idx,
-            descripcion: estadoForm.obs.trim() || "Sin observación",
-            nivel_logro_id: estadoForm.logroId,
-            puntaje_estimado: puntaje,
-          });
-        }
-      }
-
-      if (registrosAInsertar.length === 0) {
-        setNotificacion({
-          texto: "Marcá al menos un indicador para guardar.",
-          error: true,
-        });
-        setGuardando(false);
-        return;
-      }
-
-      // Limpiar registros antiguos del mismo alumno/trimestre/semana/contenido para evitar duplicados en la tabla
-      for (const bloque of contenidosFiltrados) {
-        await supabase
-          .from("observacion_semanal")
-          .delete()
-          .eq("alumno_id", alumnoSeleccionado)
-          .eq("trimestre", trimestre)
-          .eq("semana", semana)
-          .eq("contenido_id", bloque.id);
-      }
-
-      // Guardar masivamente los nuevos criterios evaluados
-      const { error } = await supabase
-        .from("observacion_semanal")
-        .insert(registrosAInsertar);
+      const { error } = await supabase.from("observacion_semanal").upsert(
+        {
+          alumno_id: alumnoSeleccionado.id,
+          curso_id: cursoId,
+          maestra_id: maestraId,
+          gestion: gestion,
+          trimestre: trimestre,
+          semana: semana,
+          campo_id: idCampoNumerico,
+          nota_ser: metricasFinales.totalSer,
+          nota_saber: metricasFinales.totalSaber,
+          nota_hacer: metricasFinales.totalHacer,
+          nota_decidir: metricasFinales.totalDecidir,
+          nota_final: metricasFinales.notaFinal,
+          observacion: observacion.trim(),
+        },
+        {
+          // Llave única compuesta para evitar duplicar registros en el mismo periodo
+          onConflict: "alumno_id,curso_id,gestion,trimestre,semana,campo_id",
+        },
+      );
 
       if (error) throw error;
 
-      setNotificacion({
-        texto: `¡Evaluación de la Semana ${semana} guardada exitosamente!`,
-        error: false,
+      setMensajeEstado({
+        tipo: "exito",
+        texto: `Evaluación de la Semana ${semana} guardada correctamente.`,
       });
-
-      // Forzar al Server Component a recargar los datos actualizados
-      router.refresh();
+      setObservacion(""); // Limpiamos cuadro de notas de texto
     } catch (err: any) {
       console.error(err);
-      setNotificacion({
-        texto: "Hubo un problema al guardar los datos en Supabase.",
-        error: true,
+      setMensajeEstado({
+        tipo: "error",
+        texto: "No se pudo guardar el registro semanal en la base de datos.",
       });
     } finally {
       setGuardando(false);
@@ -247,243 +291,366 @@ export default function EvaluacionCosmosClient({
   };
 
   return (
-    <main className="min-w-0 font-nunito bg-gray-50/50 min-h-screen pb-12">
-      {/* BARRA SUPERIOR E ESTILOS */}
-      <div className="bg-white border-b border-gray-100 px-4 lg:px-7 py-3.5 flex items-center gap-3 sticky top-0 z-30 shadow-sm">
-        <Link
-          href={`/dashboard/maestra/curso/${cursoId}`}
-          className="w-9 h-9 bg-gray-50 hover:bg-gray-100 rounded-xl flex items-center justify-center transition-all shrink-0"
-        >
-          <ArrowLeft size={18} className="text-gray-600" />
-        </Link>
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">
-            {cursoNombre}
-          </p>
-          <h1 className="text-lg font-black text-gray-900 leading-tight">
-            Evaluación Semanal: Cosmos y Pensamiento
-          </h1>
+    <main className="min-h-screen bg-gray-50/50 pb-6 w-full text-xs font-sans">
+      {/* TOP BAR */}
+      <div className="bg-white border-b border-gray-100 px-4 lg:px-6 py-3 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link
+              href={`/dashboard/maestra/curso/${cursoId}`}
+              className="w-8 h-8 bg-gray-50 hover:bg-gray-100 rounded-xl flex items-center justify-center shrink-0 transition-all"
+            >
+              <ArrowLeft size={16} className="text-gray-600" />
+            </Link>
+            <div className="min-w-0">
+              <h1 className="text-sm font-black text-gray-900 uppercase tracking-tight">
+                Evaluación Curricular Integrada
+              </h1>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">
+                {cursoNombre}
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-black text-gray-400 bg-gray-50 border border-gray-100 px-3 py-1 rounded-xl shrink-0 font-mono">
+            Gestión {gestion}
+          </span>
         </div>
       </div>
 
-      <div className="px-4 lg:px-7 pt-5 max-w-4xl mx-auto space-y-4">
-        {/* PANEL DE CONTROL / SELECTORES */}
-        <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Selector de Alumno */}
-          <div>
-            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-              <User size={12} className="text-orange-500" /> Estudiante
-            </label>
-            <select
-              value={alumnoSeleccionado}
-              onChange={(e) => setAlumnoSeleccionado(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-orange-400 transition-all"
-            >
-              <option value="" disabled>
-                Selecciona un alumno...
-              </option>
-              {alumnos.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.nombre} {a.apellido}
-                </option>
-              ))}
-            </select>
+      <div className="max-w-7xl mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* COLUMNA IZQUIERDA: LISTA DE ALUMNOS */}
+        <div className="space-y-3 w-full">
+          <div className="relative w-full">
+            <Search
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"
+            />
+            <input
+              type="text"
+              placeholder="Buscar estudiante..."
+              className="w-full bg-white border border-gray-100 rounded-xl pl-9 pr-4 py-2 text-xs font-bold shadow-xs outline-none focus:ring-1 focus:ring-orange-400 transition-all"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
 
-          {/* Selector de Trimestre */}
-          <div>
-            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-              <BookOpen size={12} className="text-orange-500" /> Trimestre
-              Escolar
-            </label>
-            <div className="grid grid-cols-3 gap-1.5 bg-gray-50 p-1 rounded-xl border border-gray-100">
-              {[1, 2, 3].map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTrimestre(t)}
-                  className={`py-2 text-xs font-black rounded-lg transition-all ${
-                    trimestre === t
-                      ? "bg-orange-500 text-white shadow-sm"
-                      : "text-gray-500 hover:text-gray-800"
-                  }`}
-                >
-                  {t}° Trim
-                </button>
-              ))}
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-xs w-full">
+            <div className="px-4 py-3 border-b border-gray-50 bg-gray-50/30 flex justify-between items-center">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                Estudiantes ({alumnosFiltrados.length})
+              </span>
             </div>
-          </div>
 
-          {/* Selector de Semana */}
-          <div>
-            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-              <Clock size={12} className="text-orange-500" /> Semana de Clases
-            </label>
-            <select
-              value={semana}
-              onChange={(e) => setSemana(Number(e.target.value))}
-              className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-orange-400 transition-all"
-            >
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((s) => (
-                <option key={s} value={s}>
-                  Semana {s}
-                </option>
-              ))}
-            </select>
+            <div className="divide-y divide-gray-50 max-h-[calc(100vh-220px)] overflow-y-auto">
+              {alumnosFiltrados.map((alumno) => {
+                const esActivo = alumnoSeleccionado?.id === alumno.id;
+                return (
+                  <button
+                    key={alumno.id}
+                    onClick={() => {
+                      setAlumnoSeleccionado(alumno);
+                      setNotasDinamicas({});
+                      setMensajeEstado(null);
+                    }}
+                    className={`w-full flex items-center justify-between px-4 py-3 transition-all text-left group ${
+                      esActivo
+                        ? "bg-orange-50/40 border-r-2 border-orange-500"
+                        : "hover:bg-gray-50/70"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-gray-100 text-gray-400 flex items-center justify-center font-black text-xs shrink-0">
+                        {alumno.nombre ? alumno.nombre[0] : "U"}
+                      </div>
+                      <div className="min-w-0">
+                        <p
+                          className={`text-xs font-black truncate ${esActivo ? "text-orange-600" : "text-gray-800"}`}
+                        >
+                          {alumno.nombre} {alumno.apellido}
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight
+                      size={14}
+                      className="text-gray-300 group-hover:text-orange-400"
+                    />
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        {/* NOTIFICACIONES */}
-        {notificacion && (
-          <div
-            className={`p-4 rounded-xl border flex items-center gap-3 animate-fade-in ${
-              notificacion.error
-                ? "bg-red-50 border-red-100 text-red-700"
-                : "bg-green-50 border-green-100 text-green-700"
-            }`}
-          >
-            <AlertCircle size={16} className="shrink-0" />
-            <p className="text-sm font-bold">{notificacion.texto}</p>
-          </div>
-        )}
+        {/* COLUMNA DERECHA: FORMULARIO PEDAGÓGICO */}
+        <div
+          className={`w-full lg:col-span-2 ${alumnoSeleccionado ? "fixed inset-0 z-50 p-4 flex items-center justify-center lg:relative lg:inset-auto lg:p-0 lg:z-0 lg:block" : "hidden lg:block"}`}
+        >
+          {alumnoSeleccionado && (
+            <div
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs lg:hidden"
+              onClick={() => setAlumnoSeleccionado(null)}
+            />
+          )}
 
-        {/* LISTA DE EVALUACIÓN OFICIAL DEL PDF */}
-        <div className="space-y-4">
-          {contenidosFiltrados.length > 0 ? (
-            contenidosFiltrados.map((bloque) => (
-              <div
-                key={bloque.id}
-                className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4"
-              >
-                {/* Cabecera del Bloque Temático del Ministerio */}
-                <div className="border-b border-gray-50 pb-3">
-                  <span className="bg-orange-50 text-orange-600 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md">
-                    Temática Orientadora
-                  </span>
-                  <h3 className="text-base font-black text-gray-900 mt-1">
-                    {bloque.titulo_tematico}
-                  </h3>
+          {alumnoSeleccionado ? (
+            <div className="relative bg-white w-full border border-gray-100 lg:rounded-2xl rounded-xl shadow-2xl lg:shadow-xs flex flex-col max-h-[85vh] lg:max-h-none overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-xs shadow-sm">
+                    {alumnoSeleccionado.nombre
+                      ? alumnoSeleccionado.nombre[0]
+                      : "U"}
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-xs font-black text-gray-900 leading-tight truncate">
+                      {alumnoSeleccionado.nombre} {alumnoSeleccionado.apellido}
+                    </h2>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setAlumnoSeleccionado(null)}
+                  className="w-7 h-7 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400 lg:hidden"
+                >
+                  <X size={14} />
+                </button>
+              </div>
 
-                {/* Sublista de indicadores contenidos en el JSONB */}
-                <div className="divide-y divide-gray-100 space-y-4 pt-1">
-                  {bloque.contenidos_detalle.map((indicador, indx) => {
-                    const key = `${bloque.id}-${indx}`;
-                    const valorActual = evaluacionesForm[key]?.logroId ?? 0;
-                    const obsActual = evaluacionesForm[key]?.obs ?? "";
-
-                    return (
-                      <div
-                        key={indx}
-                        className={`pt-4 first:pt-0 flex flex-col md:flex-row md:items-start gap-4 transition-all`}
+              {/* NAV TAB DE CAMPOS */}
+              <div className="flex px-2 py-1 bg-gray-50/50 border-b border-gray-100 overflow-x-auto">
+                {camposNavbar.map((campo) => {
+                  const Icon = campo.icon;
+                  const activo = campoActivo === campo.id;
+                  return (
+                    <button
+                      key={campo.id}
+                      onClick={() => setCampoActivo(campo.id as CampoId)}
+                      className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 px-2 min-w-[75px] transition-all rounded-xl ${
+                        activo
+                          ? "bg-white shadow-xs border border-gray-100"
+                          : "opacity-40"
+                      }`}
+                    >
+                      <Icon
+                        size={15}
+                        className={activo ? campo.color : "text-gray-400"}
+                      />
+                      <span
+                        className={`text-[9px] font-black uppercase tracking-tighter ${activo ? "text-gray-900" : "text-gray-400"}`}
                       >
-                        {/* Texto del Indicador */}
-                        <div className="flex-1">
-                          <p className="text-sm font-bold text-gray-700 leading-relaxed">
-                            <span className="text-orange-400 font-mono font-black mr-1">
-                              {indx + 1}.
-                            </span>
-                            {indicador}
-                          </p>
+                        {campo.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
-                          {/* Caja de Observación */}
-                          <input
-                            type="text"
-                            placeholder="Agregar observación opcional..."
-                            value={obsActual}
-                            onChange={(e) =>
-                              handleCambioObservacion(
-                                bloque.id,
-                                indx,
-                                e.target.value,
-                              )
-                            }
-                            className="w-full mt-2 bg-gray-50 border border-gray-50 rounded-lg px-3 py-1.5 text-xs font-semibold outline-none focus:bg-white focus:ring-1 focus:ring-orange-400 transition-all text-gray-700"
-                          />
-                        </div>
-
-                        {/* Botonera de tres opciones (✓ / ◐ / ✗) */}
-                        <div className="flex items-center gap-1 shrink-0 self-start md:self-center bg-gray-50 p-1 rounded-xl border border-gray-100">
-                          {/* LOGRADO */}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleCambioLogro(bloque.id, indx, 1)
-                            }
-                            className={`flex items-center gap-1 px-3 py-2 text-xs font-black rounded-lg transition-all ${
-                              valorActual === 1
-                                ? "bg-green-500 text-white shadow-sm"
-                                : "text-gray-400 hover:bg-gray-100 hover:text-green-600"
-                            }`}
-                          >
-                            <Check size={13} /> Logrado
-                          </button>
-
-                          {/* EN PROCESO */}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleCambioLogro(bloque.id, indx, 2)
-                            }
-                            className={`flex items-center gap-1 px-3 py-2 text-xs font-black rounded-lg transition-all ${
-                              valorActual === 2
-                                ? "bg-orange-400 text-white shadow-sm"
-                                : "text-gray-400 hover:bg-gray-100 hover:text-orange-500"
-                            }`}
-                          >
-                            <HelpCircle size={13} /> En Proceso
-                          </button>
-
-                          {/* NO LOGRADO */}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleCambioLogro(bloque.id, indx, 3)
-                            }
-                            className={`flex items-center gap-1 px-3 py-2 text-xs font-black rounded-lg transition-all ${
-                              valorActual === 3
-                                ? "bg-red-500 text-white shadow-sm"
-                                : "text-gray-400 hover:bg-gray-100 hover:text-red-500"
-                            }`}
-                          >
-                            <X size={13} /> No Logrado
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+              {/* PANEL DE CONTROL DE TIEMPO (TRIMESTRE Y SEMANA) */}
+              <div className="px-4 py-3 bg-gray-50/40 border-b border-gray-100 grid grid-cols-2 gap-4 shrink-0">
+                <div>
+                  <label className="text-[9px] font-black text-gray-400 uppercase block mb-1">
+                    Trimestre Escolar
+                  </label>
+                  <select
+                    value={trimestre}
+                    onChange={(e) => setTrimestre(Number(e.target.value))}
+                    className="w-full bg-white border border-gray-200 rounded-lg py-1 px-2 font-bold text-xs shadow-xs outline-none focus:ring-1 focus:ring-orange-400"
+                  >
+                    <option value={1}>1er Trimestre</option>
+                    <option value={2}>2do Trimestre</option>
+                    <option value={3}>3er Trimestre</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-gray-400 uppercase block mb-1">
+                    Semana del Trimestre
+                  </label>
+                  <select
+                    value={semana}
+                    onChange={(e) => setSemana(Number(e.target.value))}
+                    className="w-full bg-white border border-gray-200 rounded-lg py-1 px-2 font-mono font-black text-xs shadow-xs outline-none focus:ring-1 focus:ring-orange-400"
+                  >
+                    {Array.from({ length: 14 }, (_, i) => i + 1).map((sem) => (
+                      <option key={sem} value={sem}>
+                        Semana {sem}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
-            ))
+
+              {/* MARCADOR DE NOTA */}
+              <div className="p-4 bg-white border-b border-gray-50">
+                <div
+                  className={`p-3 rounded-xl border flex items-center justify-between ${metricasFinales.escala.color}`}
+                >
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-wider opacity-80">
+                      Rendimiento Cualitativo
+                    </p>
+                    <p className="text-xs font-black mt-0.5">
+                      {metricasFinales.escala.label}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[9px] font-black uppercase tracking-wider opacity-80">
+                      Nota Final Calculada
+                    </p>
+                    <p className="text-lg font-black font-mono leading-none mt-0.5">
+                      {metricasFinales.notaFinal}
+                      <span className="text-xs font-bold opacity-60">/100</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ALERTAS DE ESTADO */}
+              {mensajeEstado && (
+                <div
+                  className={`mx-4 mt-3 p-2.5 rounded-xl text-[11px] font-bold border ${
+                    mensajeEstado.tipo === "exito"
+                      ? "bg-emerald-50 border-emerald-100 text-emerald-700"
+                      : "bg-red-50 border-red-100 text-red-700"
+                  }`}
+                >
+                  {mensajeEstado.texto}
+                </div>
+              )}
+
+              {/* CONTENEDOR DINÁMICO DE CRITERIOS */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-5 bg-white">
+                {Object.keys(estructuraCurricularDelCampo).length > 0 ? (
+                  Object.entries(estructuraCurricularDelCampo).map(
+                    ([nombreTematica, dimensiones]) => (
+                      <div
+                        key={nombreTematica}
+                        className="border border-gray-100 rounded-2xl p-3.5 space-y-3 bg-gray-50/20"
+                      >
+                        <h4 className="font-black text-gray-900 text-xs border-b border-gray-100 pb-1.5 uppercase">
+                          📚 Temática: {nombreTematica}
+                        </h4>
+
+                        {(
+                          [
+                            {
+                              key: "ser",
+                              label: "SER",
+                              max: 10,
+                              data: dimensiones.ser,
+                            },
+                            {
+                              key: "saber",
+                              label: "SABER",
+                              max: 45,
+                              data: dimensiones.saber,
+                            },
+                            {
+                              key: "hacer",
+                              label: "HACER",
+                              max: 40,
+                              data: dimensiones.hacer,
+                            },
+                            {
+                              key: "decidir",
+                              label: "DECIDIR",
+                              max: 5,
+                              data: dimensiones.decidir,
+                            },
+                          ] as const
+                        ).map((dim) =>
+                          dim.data?.map((indicador) => (
+                            <div
+                              key={indicador.id}
+                              className="grid grid-cols-1 sm:grid-cols-5 gap-2 bg-white p-2.5 rounded-xl border border-gray-100/70 items-center"
+                            >
+                              <div className="sm:col-span-1 flex flex-col">
+                                <span className="font-black text-[9px] text-gray-500">
+                                  {dim.label}
+                                </span>
+                                <span className="text-[8px] font-bold text-gray-300 font-mono">
+                                  Max {dim.max} pts
+                                </span>
+                              </div>
+                              <div className="sm:col-span-3 text-[10px] text-gray-500 font-bold italic leading-tight">
+                                "{indicador.criterio}"
+                              </div>
+                              <div className="sm:col-span-1 flex justify-end">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={dim.max}
+                                  placeholder="0"
+                                  className="w-14 bg-gray-50 border border-gray-200 rounded-lg py-1 text-xs font-black text-center font-mono outline-none focus:ring-1 focus:ring-orange-400"
+                                  value={notasDinamicas[indicador.id] || ""}
+                                  onChange={(e) => {
+                                    const val = Math.min(
+                                      dim.max,
+                                      Math.max(0, Number(e.target.value)),
+                                    );
+                                    setNotasDinamicas({
+                                      ...notasDinamicas,
+                                      [indicador.id]: val,
+                                    });
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          )),
+                        )}
+                      </div>
+                    ),
+                  )
+                ) : (
+                  <div className="p-8 text-center border border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-400">
+                    <AlertTriangle size={20} className="text-amber-400 mb-2" />
+                    <p className="font-bold text-xs uppercase">
+                      No hay indicadores mapeados para este campo
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">
+                    Observaciones de la Semana
+                  </label>
+                  <textarea
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none"
+                    rows={2}
+                    placeholder="Escribe el desarrollo cualitativo o comportamiento del alumno esta semana..."
+                    value={observacion}
+                    onChange={(e) => setObservacion(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* ACCIÓN DE GUARDADO CONECTADA */}
+              <div className="p-3 border-t border-gray-100 bg-gray-50/50 shrink-0">
+                <button
+                  onClick={handleGuardarEvaluacion}
+                  disabled={guardando}
+                  className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-gray-300 text-white py-2.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-md"
+                >
+                  {guardando ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" /> Conectando
+                      a la Base de Datos...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={14} /> Guardar Evaluación - Semana {semana}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           ) : (
-            <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center shadow-sm">
-              <AlertCircle size={24} className="text-orange-400 mx-auto mb-2" />
-              <p className="text-gray-500 font-bold text-sm">
-                No hay contenidos curriculares de Cosmos cargados para el{" "}
-                {trimestre}° Trimestre.
+            <div className="bg-white border border-gray-100 border-dashed rounded-2xl p-12 text-center flex flex-col items-center justify-center min-h-[440px] text-gray-400 w-full">
+              <User size={18} className="text-gray-300 mb-2" />
+              <p className="text-xs font-black uppercase text-gray-500">
+                Ningún estudiante seleccionado
               </p>
             </div>
           )}
         </div>
-
-        {/* BOTÓN FLOTANTE / DE ACCIÓN INFERIOR */}
-        {contenidosFiltrados.length > 0 && (
-          <div className="flex justify-end pt-2">
-            <button
-              type="button"
-              onClick={guardarEvaluacionSemanal}
-              disabled={guardando}
-              className="w-full md:w-auto bg-gradient-to-br from-orange-500 to-orange-600 text-white px-6 py-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-orange-200 hover:from-orange-600 hover:to-orange-700 transition-all active:scale-98 disabled:opacity-50"
-            >
-              {guardando ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Save size={16} />
-              )}
-              Guardar Evaluación de Cosmos (Semana {semana})
-            </button>
-          </div>
-        )}
       </div>
     </main>
   );

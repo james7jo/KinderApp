@@ -24,6 +24,9 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
+// Importamos el componente del calendario corregido
+import CalendarioEvaluaciones from "./components/CalendarioEvaluaciones";
+
 type Alumno = {
   id: string;
   nombre: string;
@@ -492,16 +495,16 @@ function ListaAlumnos({
   return (
     <>
       <div className="bg-white rounded-2xl border border-gray-100">
-        <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-50">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
           <div className="flex items-center gap-2">
-            <Users size={15} className="text-orange-500" />
-            <h2 className="font-black text-gray-900 text-sm">
+            <Users size={14} className="text-orange-500" />
+            <h2 className="font-black text-gray-900 text-xs uppercase tracking-tight">
               Alumnos ({alumnos.length})
             </h2>
           </div>
           <Link
             href={`/dashboard/maestra/curso/${cursoId}/alumnos`}
-            className="text-orange-500 text-xs font-bold hover:text-orange-600 transition-colors"
+            className="text-orange-500 text-[11px] font-black hover:text-orange-600 transition-colors uppercase tracking-tight"
           >
             Ver todos →
           </Link>
@@ -509,10 +512,10 @@ function ListaAlumnos({
 
         {/* Buscador */}
         {alumnos.length > 4 && (
-          <div className="px-4 py-2 border-b border-gray-50">
+          <div className="px-3 py-2 border-b border-gray-50">
             <div className="relative">
               <Search
-                size={13}
+                size={12}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"
               />
               <input
@@ -520,14 +523,14 @@ function ListaAlumnos({
                 placeholder="Buscar alumno..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-gray-50 rounded-xl pl-9 pr-8 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-orange-400 transition-all"
+                className="w-full bg-gray-50 rounded-xl pl-8 pr-8 py-1.5 text-[11px] font-bold outline-none focus:ring-1 focus:ring-orange-400 transition-all"
               />
               {search && (
                 <button
                   onClick={() => setSearch("")}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2"
                 >
-                  <X size={12} className="text-gray-400" />
+                  <X size={11} className="text-gray-400" />
                 </button>
               )}
             </div>
@@ -535,7 +538,7 @@ function ListaAlumnos({
         )}
 
         {/* Lista */}
-        <div className="divide-y divide-gray-50">
+        <div className="divide-y divide-gray-50 max-h-[290px] overflow-y-auto">
           {filtrados.slice(0, 5).map((alumno, idx) => {
             const bitacora = bitacorasHoy?.find(
               (b) => b.alumno_id === alumno.id,
@@ -553,64 +556,66 @@ function ListaAlumnos({
               <button
                 key={alumno.id}
                 onClick={() => setSelected({ alumno, idx })}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-orange-50/50 transition-all group text-left"
+                className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-all group text-left"
               >
-                <div
-                  className={`w-10 h-10 bg-gradient-to-br ${c1} ${c2} rounded-xl flex items-center justify-center shrink-0 overflow-hidden`}
-                >
-                  {alumno.foto_url ? (
-                    <img
-                      src={alumno.foto_url}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className={`font-black text-sm ${c3}`}>
-                      {alumno.nombre[0]}
-                      {alumno.apellido[0]}
-                    </span>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="font-black text-gray-900 text-sm truncate">
-                      {alumno.nombre} {alumno.apellido}
-                    </p>
-                    {tieneAlerta && (
-                      <AlertCircle
-                        size={11}
-                        className="text-red-400 shrink-0"
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div
+                    className={`w-8 h-8 bg-gradient-to-br ${c1} ${c2} rounded-lg flex items-center justify-center shrink-0 overflow-hidden`}
+                  >
+                    {alumno.foto_url ? (
+                      <img
+                        src={alumno.foto_url}
+                        alt=""
+                        className="w-full h-full object-cover"
                       />
+                    ) : (
+                      <span className={`font-black text-xs ${c3}`}>
+                        {alumno.nombre[0]}
+                        {alumno.apellido[0]}
+                      </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {presente ? (
-                      <span className="text-[10px] font-bold text-green-500">
-                        ✓ Presente
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-bold text-gray-400">
-                        Ausente
-                      </span>
-                    )}
-                    {bitacora?.estado_animo && (
-                      <span className="text-sm">
-                        {ESTADO_EMOJI[bitacora.estado_animo]}
-                      </span>
-                    )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1">
+                      <p className="font-black text-gray-900 text-xs truncate">
+                        {alumno.nombre} {alumno.apellido}
+                      </p>
+                      {tieneAlerta && (
+                        <AlertCircle
+                          size={11}
+                          className="text-red-400 shrink-0"
+                        />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {presente ? (
+                        <span className="text-[10px] font-bold text-green-500">
+                          ✓ Presente
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-gray-400">
+                          Ausente
+                        </span>
+                      )}
+                      {bitacora?.estado_animo && (
+                        <span className="text-xs">
+                          {ESTADO_EMOJI[bitacora.estado_animo]}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <ChevronRight
-                  size={14}
-                  className="text-gray-200 group-hover:text-orange-400 transition-colors shrink-0"
+                  size={12}
+                  className="text-gray-300 group-hover:text-orange-400 transition-colors shrink-0"
                 />
               </button>
             );
           })}
 
           {filtrados.length === 0 && (
-            <div className="py-8 text-center">
-              <p className="text-gray-400 text-sm font-bold">
+            <div className="py-6 text-center">
+              <p className="text-gray-400 text-xs font-bold">
                 Sin resultados para "{search}"
               </p>
             </div>
@@ -643,6 +648,7 @@ export default function CursoHubClient({
   pendientes,
   pct,
   today,
+  planificacionAnual = [],
 }: {
   cursoId: string;
   curso: any;
@@ -655,7 +661,16 @@ export default function CursoHubClient({
   pendientes: number;
   pct: number;
   today: string;
+  planificacionAnual?: any;
 }) {
+  const planEstructuradoReal = useMemo(() => {
+    if (!planificacionAnual) return [];
+    if (Array.isArray(planificacionAnual)) {
+      return planificacionAnual[0]?.contenido_estructurado || [];
+    }
+    return planificacionAnual.contenido_estructurado || [];
+  }, [planificacionAnual]);
+
   const modulos = [
     {
       href: `/dashboard/maestra/curso/${cursoId}/alumnos`,
@@ -734,141 +749,203 @@ export default function CursoHubClient({
       iconColor: "text-orange-500",
       hover: "hover:border-orange-200",
     },
+    {
+      href: `/dashboard/maestra/curso/${cursoId}/planificacion`,
+      label: "Planificación Anual",
+      desc: "Calendarizar indicadores (PAT)",
+      icon: Calendar,
+      iconBg: "bg-orange-50",
+      iconColor: "text-orange-500",
+      hover: "hover:border-orange-200",
+    },
   ];
 
   return (
-    <main className="min-w-0">
+    <main className="min-w-0 bg-gray-50/50 min-h-screen">
       {/* TOP BAR */}
-      <div className="bg-white border-b border-gray-100 px-4 lg:px-7 py-3.5 flex items-center gap-3 sticky top-0 z-30">
-        <Link
-          href="/dashboard/maestra/curso"
-          className="w-9 h-9 bg-gray-50 hover:bg-gray-100 rounded-xl flex items-center justify-center transition-all shrink-0"
-        >
-          <ArrowLeft size={18} className="text-gray-600" />
-        </Link>
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">
-            Curso
-          </p>
-          <h1 className="text-lg font-black text-gray-900 leading-tight truncate">
-            {curso?.nombre}
-          </h1>
+      <div className="bg-white border-b border-gray-100 px-4 lg:px-7 py-3 flex items-center justify-between sticky top-0 z-30">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link
+            href="/dashboard/maestra/curso"
+            className="w-8 h-8 bg-gray-50 hover:bg-gray-100 rounded-lg flex items-center justify-center transition-all shrink-0"
+          >
+            <ArrowLeft size={16} className="text-gray-600" />
+          </Link>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-black text-gray-900 leading-tight truncate">
+                {curso?.nombre}
+              </h1>
+              <span className="text-[9px] font-black text-gray-400 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-md font-mono">
+                {curso?.codigo}
+              </span>
+            </div>
+            <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mt-0.5">
+              Panel de Control Docente
+            </p>
+          </div>
         </div>
-        <span className="text-[10px] font-black text-gray-400 bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-full shrink-0 font-mono">
-          {curso?.codigo}
+
+        {/* 🌟 CÓDIGO PARENTAL MANTENIDO PEQUEÑO Y RE-UBICADO */}
+        <span className="text-[10px] font-black text-gray-400 bg-gray-100/70 border border-gray-200/50 px-3 py-1 rounded-xl shrink-0 font-mono shadow-xs">
+          {cursoId.substring(0, 8)}
         </span>
       </div>
 
-      <div className="px-4 lg:px-7 pt-5 pb-8 space-y-5">
-        {/* STATS */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-orange-500 rounded-2xl p-4 text-white relative overflow-hidden shadow-lg shadow-orange-200">
-            <div className="absolute -top-4 -right-4 w-16 h-16 bg-orange-400 opacity-40 rounded-full" />
-            <div className="relative z-10">
-              <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center mb-2">
-                <Users size={14} className="text-white" />
-              </div>
-              <p className="text-2xl lg:text-3xl font-black leading-none">
+      <div className="px-4 lg:px-7 py-4 space-y-4 max-w-[1600px] mx-auto">
+        {/* 🌟 MINIMIZADO: MICRO-ESTADÍSTICAS COMPACTAS EN UNA SOLA LÍNEA */}
+        <div className="grid grid-cols-3 gap-2.5 max-w-3xl">
+          <div className="bg-white border border-gray-100 rounded-xl p-2.5 flex items-center gap-3 shadow-xs">
+            <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm shadow-orange-100">
+              <Users size={14} />
+            </div>
+            <div>
+              <p className="text-base font-black text-gray-900 leading-none">
                 {totalAlumnos}
               </p>
-              <p className="text-white/80 text-[11px] font-bold mt-1">
+              <p className="text-gray-400 text-[9px] font-black uppercase tracking-wide mt-1">
                 Alumnos
               </p>
             </div>
           </div>
-          <div className="bg-white rounded-2xl p-4 border border-gray-100 text-center">
-            <p className="text-2xl lg:text-3xl font-black text-gray-900 leading-none">
-              {asistenciaHoy}
-            </p>
-            <p className="text-gray-400 text-[11px] font-bold mt-1">
-              Presentes hoy
-            </p>
+
+          <div className="bg-white border border-gray-100 rounded-xl p-2.5 flex items-center gap-3 shadow-xs">
+            <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm shadow-emerald-100">
+              <CheckCircle2 size={14} />
+            </div>
+            <div>
+              <p className="text-base font-black text-gray-900 leading-none">
+                {asistenciaHoy}
+              </p>
+              <p className="text-gray-400 text-[9px] font-black uppercase tracking-wide mt-1">
+                Presentes
+              </p>
+            </div>
           </div>
+
           <div
-            className={`rounded-2xl p-4 border text-center ${pct >= 80 ? "bg-green-50 border-green-100" : pct >= 50 ? "bg-amber-50 border-amber-100" : "bg-red-50 border-red-100"}`}
+            className={`border rounded-xl p-2.5 flex items-center gap-3 shadow-xs ${
+              pct >= 80
+                ? "bg-green-50/40 border-green-100"
+                : pct >= 50
+                  ? "bg-amber-50/40 border-amber-100"
+                  : "bg-red-50/40 border-red-100"
+            }`}
           >
-            <p
-              className={`text-2xl lg:text-3xl font-black leading-none ${pct >= 80 ? "text-green-600" : pct >= 50 ? "text-amber-600" : "text-red-500"}`}
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm ${
+                pct >= 80
+                  ? "bg-green-500 shadow-green-100"
+                  : pct >= 50
+                    ? "bg-amber-500 shadow-amber-100"
+                    : "bg-red-500 shadow-red-100"
+              }`}
             >
-              {pct}%
-            </p>
-            <p
-              className={`text-[11px] font-bold mt-1 ${pct >= 80 ? "text-green-400" : pct >= 50 ? "text-amber-400" : "text-red-400"}`}
-            >
-              Asistencia
-            </p>
+              <ClipboardList size={14} />
+            </div>
+            <div>
+              <p
+                className={`text-base font-black leading-none ${
+                  pct >= 80
+                    ? "text-green-600"
+                    : pct >= 50
+                      ? "text-amber-600"
+                      : "text-red-600"
+                }`}
+              >
+                {pct}%
+              </p>
+              <p className="text-gray-400 text-[9px] font-black uppercase tracking-wide mt-1">
+                Asistencia
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* ALERTA */}
-        {pendientes > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
-            <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
-              <AlertCircle size={18} className="text-amber-500" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-black text-amber-800 text-sm">
-                {pendientes} bitácora{pendientes !== 1 ? "s" : ""} sin completar
-                hoy
-              </p>
-              <p className="text-amber-600 text-xs font-medium">
-                Completá antes de que termine el día
-              </p>
-            </div>
-            <Link
-              href={`/dashboard/maestra/curso/${cursoId}/bitacora`}
-              className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black px-3 py-2 rounded-xl transition-all shrink-0"
-            >
-              Ir <ChevronRight size={12} />
-            </Link>
-          </div>
-        )}
-
-        {/* LISTA ALUMNOS CON MODAL */}
-        {alumnos.length > 0 && (
-          <ListaAlumnos
-            alumnos={alumnos}
-            bitacorasHoy={bitacorasHoy}
-            today={today}
-            cursoId={cursoId}
-          />
-        )}
-
-        {/* MÓDULOS */}
-        <div>
-          <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">
-            Gestión del curso
-          </h2>
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            {modulos.map((mod) => {
-              const Icon = mod.icon;
-              return (
-                <Link
-                  key={mod.href}
-                  href={mod.href}
-                  className={`bg-white rounded-2xl p-4 border border-gray-100 ${mod.hover} hover:shadow-md transition-all group`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div
-                      className={`w-10 h-10 ${mod.iconBg} rounded-xl flex items-center justify-center`}
-                    >
-                      <Icon size={18} className={mod.iconColor} />
-                    </div>
-                    {(mod as any).alert && (
-                      <span className="w-2 h-2 bg-amber-400 rounded-full mt-1" />
-                    )}
+        {/* ── 🌟 ESTRATEGIA DE DOS COLUMNAS (GRID) ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+          {/* COLUMNA IZQUIERDA (ANCHEADA - 2 TERCIOS) */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* ALERTA DE BITÁCORA */}
+            {pendientes > 0 && (
+              <div className="bg-amber-50/70 border border-amber-200/60 rounded-xl p-3 flex items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center shrink-0">
+                    <AlertCircle size={15} className="text-amber-500" />
                   </div>
-                  <p className="font-black text-gray-900 text-sm">
-                    {mod.label}
-                  </p>
-                  <p
-                    className={`text-xs mt-0.5 leading-tight font-medium ${(mod as any).alert ? "text-amber-500" : "text-gray-400"}`}
-                  >
-                    {mod.desc}
-                  </p>
+                  <div className="min-w-0">
+                    <p className="font-black text-amber-800 text-xs leading-tight">
+                      {pendientes} bitácora{pendientes !== 1 ? "s" : ""} sin
+                      completar hoy
+                    </p>
+                    <p className="text-amber-600 text-[10px] font-bold mt-0.5">
+                      Completá antes de que termine el día
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  href={`/dashboard/maestra/curso/${cursoId}/bitacora`}
+                  className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg transition-all shrink-0"
+                >
+                  Ir <ChevronRight size={11} />
                 </Link>
-              );
-            })}
+              </div>
+            )}
+
+            {/* LISTA ALUMNOS COMPACTADA */}
+            <ListaAlumnos
+              alumnos={alumnos}
+              bitacorasHoy={bitacorasHoy}
+              today={today}
+              cursoId={cursoId}
+            />
+
+            {/* MÓDULOS DE GESTIÓN */}
+            <div>
+              <h2 className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2">
+                Gestión del curso
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {modulos.map((mod) => {
+                  const Icon = mod.icon;
+                  return (
+                    <Link
+                      key={mod.href}
+                      href={mod.href}
+                      className={`bg-white rounded-xl p-3 border border-gray-100 ${mod.hover} hover:shadow-xs transition-all group`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div
+                          className={`w-8 h-8 ${mod.iconBg} rounded-lg flex items-center justify-center`}
+                        >
+                          <Icon size={15} className={mod.iconColor} />
+                        </div>
+                        {(mod as any).alert && (
+                          <span className="w-1.5 h-1.5 bg-amber-400 rounded-full mt-0.5" />
+                        )}
+                      </div>
+                      <p className="font-black text-gray-900 text-xs tracking-tight">
+                        {mod.label}
+                      </p>
+                      <p
+                        className={`text-[10px] mt-0.5 leading-tight font-bold truncate ${(mod as any).alert ? "text-amber-500" : "text-gray-400"}`}
+                      >
+                        {mod.desc}
+                      </p>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* COLUMNA DERECHA (ESTRECHA - 1 TERCIO) */}
+          {/* Aquí se acopla el calendario pequeño en su ancho máximo nativo sin bailar */}
+          <div className="w-full">
+            <CalendarioEvaluaciones
+              planEstructurado={planEstructuradoReal}
+              eventosInstitucionales={[]}
+            />
           </div>
         </div>
       </div>

@@ -53,6 +53,12 @@ const navItems = [
     icon: Video,
     exact: false,
   },
+  {
+    href: "/dashboard/director/curriculo",
+    label: "Malla Curricular",
+    icon: GraduationCap,
+    exact: false,
+  },
 ];
 
 const toolItems = [

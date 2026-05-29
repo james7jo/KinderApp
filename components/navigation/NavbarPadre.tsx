@@ -1,4 +1,5 @@
 "use client";
+
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -15,6 +16,7 @@ import {
   Users,
   ChevronDown,
   ChevronUp,
+  Activity, // ✅ Icono importado de forma segura
 } from "lucide-react";
 import { useState } from "react";
 
@@ -68,6 +70,7 @@ export default function NavbarPadre({
     .join("")
     .toUpperCase();
 
+  // ✅ Lista actualizada con el nuevo módulo conectado sin tocar el tipado
   const hijoModulos = (hijoId: string) => [
     { href: `/dashboard/padre/hijo/${hijoId}`, label: "Perfil", icon: Users },
     {
@@ -85,7 +88,13 @@ export default function NavbarPadre({
       label: "GPS en vivo",
       icon: MapPin,
     },
+    {
+      href: `/dashboard/padre/hijo/${hijoId}/holograma`,
+      label: "Mapa Corporal",
+      icon: Activity,
+    },
   ];
+
   return (
     <>
       {/* ── SIDEBAR DESKTOP ── */}
@@ -303,7 +312,7 @@ export default function NavbarPadre({
               <span className="text-[10px] font-bold">Inicio</span>
             </Link>
 
-            {/* Hijos — va al primero directamente o a agregar */}
+            {/* Hijos */}
             {hijos.length > 0 ? (
               <Link
                 href={`/dashboard/padre/hijo/${hijos[0].id}`}
