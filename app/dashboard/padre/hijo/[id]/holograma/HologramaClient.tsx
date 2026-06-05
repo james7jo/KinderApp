@@ -173,22 +173,53 @@ export default function HologramaClient({
 
   const cambiarTrimestre = (t: number) => router.push(`?trimestre=${t}`);
 
+  // ── Paleta visual por escala (adaptada a diseño KinderApp claro) ──
   const getParteFill = (
     escala: ReturnType<typeof obtenerEscala>,
     activa: boolean,
   ) => {
     const base = (() => {
       if (escala.label.startsWith("En Desarrollo"))
-        return { fill: "#7f1d1d", stroke: "#ef4444", accent: "#fca5a5" };
+        return {
+          fill: "#fee2e2",
+          stroke: "#ef4444",
+          accent: "#dc2626",
+          text: "#b91c1c",
+        };
       if (escala.label.startsWith("Desarrollo Aceptable"))
-        return { fill: "#78350f", stroke: "#f59e0b", accent: "#fcd34d" };
+        return {
+          fill: "#fef3c7",
+          stroke: "#f59e0b",
+          accent: "#d97706",
+          text: "#92400e",
+        };
       if (escala.label.startsWith("Desarrollo Óptimo"))
-        return { fill: "#1e1b4b", stroke: "#6366f1", accent: "#a5b4fc" };
+        return {
+          fill: "#e0e7ff",
+          stroke: "#6366f1",
+          accent: "#4f46e5",
+          text: "#3730a3",
+        };
       if (escala.label.startsWith("Desarrollo Pleno"))
-        return { fill: "#064e3b", stroke: "#10b981", accent: "#6ee7b7" };
-      return { fill: "#0c1f35", stroke: "#1d4ed8", accent: "#93c5fd" };
+        return {
+          fill: "#d1fae5",
+          stroke: "#10b981",
+          accent: "#059669",
+          text: "#065f46",
+        };
+      // Sin Registro → estilo naranja KinderApp
+      return {
+        fill: "#fff7ed",
+        stroke: "#f97316",
+        accent: "#ea580c",
+        text: "#9a3412",
+      };
     })();
-    return { ...base, opacity: activa ? "1" : "0.85" };
+    return {
+      ...base,
+      opacity: activa ? "1" : "0.82",
+      strokeWidth: activa ? "1.5" : "1",
+    };
   };
 
   const saberColor = getParteFill(chinaSaber, parteSeleccionada === "saber");
@@ -199,13 +230,14 @@ export default function HologramaClient({
   const scaleX = Math.abs(Math.cos((normalizedRot * Math.PI) / 180));
   const perspectiveScale = 0.85 + scaleX * 0.15;
 
-  const accentColor = genero === "F" ? "#c084fc" : "#38bdf8";
-  const accentRgb = genero === "F" ? "192,132,252" : "56,189,248";
+  // Color de acento KinderApp: naranja para todos
+  const accentColor = "#f97316";
+  const accentLight = "#fff7ed";
 
   return (
     <main className="min-h-screen bg-gray-50/50 p-4 lg:p-6 text-xs font-sans text-gray-700">
-      {/* CABECERA (Ajustada al estilo corporativo naranja) */}
-      <div className="max-w-5xl mx-auto flex items-center justify-between border border-gray-100 bg-white p-4 rounded-xl shadow-xs mb-6">
+      {/* CABECERA */}
+      <div className="max-w-5xl mx-auto flex items-center justify-between border border-gray-100 bg-white p-4 rounded-xl shadow-sm mb-6">
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.back()}
@@ -232,7 +264,7 @@ export default function HologramaClient({
               onClick={() => cambiarTrimestre(t)}
               className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all ${
                 trimestre === t
-                  ? "bg-orange-500 text-white shadow-xs"
+                  ? "bg-orange-500 text-white shadow-sm"
                   : "text-gray-400 hover:text-gray-600"
               }`}
             >
@@ -244,37 +276,29 @@ export default function HologramaClient({
 
       <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
         {/* ═══════════════════════════════════════
-            COLUMNA IZQUIERDA: HOLOGRAMA 3D (Se mantiene futurista oscuro)
+            COLUMNA IZQUIERDA: FIGURA 3D — Estilo KinderApp
         ═══════════════════════════════════════ */}
-        <div
-          className="rounded-2xl border border-slate-800 overflow-hidden shadow-xl"
-          style={{
-            background:
-              "linear-gradient(160deg, #020810 0%, #040d1a 60%, #020810 100%)",
-          }}
-        >
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-800 bg-slate-950/40">
+        <div className="rounded-2xl border border-gray-200 overflow-hidden shadow-sm bg-white">
+          {/* Barra superior */}
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50/60">
             <div className="flex items-center gap-2">
-              <div
-                className="w-1.5 h-1.5 rounded-full"
-                style={{ background: accentColor }}
-              />
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">
-                Visualización Holográfica
+              <div className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+              <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">
+                Mapa Corporal 3D
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[9px] font-mono text-slate-500 font-bold">
+              <span className="text-[9px] font-mono text-gray-400 font-bold">
                 {genero === "M" ? "MASC" : "FEM"} · T{trimestre}
               </span>
               <button
                 onClick={() =>
                   isRotating ? stopAutoRotate() : startAutoRotate()
                 }
-                className={`flex items-center gap-1 px-2 py-1 rounded border text-[9px] font-black uppercase tracking-wider transition-all ${
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-wider transition-all ${
                   isRotating
-                    ? "border-slate-600 text-slate-100 bg-slate-800"
-                    : "border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-400"
+                    ? "border-orange-400 text-orange-600 bg-orange-50"
+                    : "border-gray-200 text-gray-400 hover:border-orange-300 hover:text-orange-500 hover:bg-orange-50"
                 }`}
               >
                 <RotateCcw
@@ -286,110 +310,62 @@ export default function HologramaClient({
             </div>
           </div>
 
+          {/* Área del SVG */}
           <div
             ref={svgContainerRef}
-            className="relative flex items-center justify-center py-6 px-4"
+            className="relative flex items-center justify-center py-8 px-4 bg-white"
             style={{
               minHeight: "440px",
               cursor: isDragging ? "grabbing" : "grab",
               userSelect: "none",
+              // Fondo sutil con rejilla muy clara — estilo KinderApp
+              backgroundImage: `radial-gradient(circle, #f97316 1px, transparent 1px)`,
+              backgroundSize: "24px 24px",
+              backgroundPosition: "0 0",
+              opacity: 1,
             }}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleMouseUp}
           >
-            <div
-              className="absolute inset-0"
-              style={{
-                backgroundImage: `linear-gradient(rgba(${accentRgb},0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(${accentRgb},0.04) 1px, transparent 1px)`,
-                backgroundSize: "24px 24px",
-              }}
-            />
+            {/* Capa de rejilla (overlay para suavizar los puntos) */}
             <div
               className="absolute inset-0 pointer-events-none"
-              style={{
-                background: `repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(${accentRgb},0.015) 3px, rgba(${accentRgb},0.015) 4px)`,
-              }}
+              style={{ background: "rgba(255,255,255,0.82)" }}
             />
+
+            {/* Sombra de suelo */}
             <div
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+              className="absolute left-1/2 bottom-8 -translate-x-1/2 pointer-events-none"
               style={{
-                width: "160px",
-                height: "320px",
-                background: `radial-gradient(ellipse, rgba(${accentRgb},0.06) 0%, transparent 70%)`,
-              }}
-            />
-            <div
-              className="absolute left-5 top-10 bottom-10 w-px"
-              style={{
-                background: `linear-gradient(to bottom, transparent, rgba(${accentRgb},0.3), transparent)`,
-              }}
-            />
-            <div
-              className="absolute right-5 top-10 bottom-10 w-px"
-              style={{
-                background: `linear-gradient(to bottom, transparent, rgba(${accentRgb},0.3), transparent)`,
-              }}
-            />
-            <div
-              className="absolute bottom-8 left-1/2 -translate-x-1/2 pointer-events-none"
-              style={{
-                width: "120px",
-                height: "4px",
-                background: `radial-gradient(ellipse, rgba(${accentRgb},0.5) 0%, transparent 70%)`,
+                width: "110px",
+                height: "12px",
+                background: "rgba(249,115,22,0.10)",
                 borderRadius: "50%",
+                filter: "blur(6px)",
               }}
             />
 
-            {/* SVG RENDERING */}
+            {/* SVG 3D de la figura */}
             <div
               style={{
                 transform: `perspective(600px) rotateY(${rotY}deg)`,
                 transformStyle: "preserve-3d",
                 transition: isDragging ? "none" : "transform 0.05s linear",
-                filter: `drop-shadow(0 0 12px rgba(${accentRgb},0.25))`,
+                position: "relative",
+                zIndex: 1,
               }}
             >
               <svg
                 viewBox="0 0 200 360"
                 style={{
-                  width: "200px",
+                  width: "190px",
                   height: "auto",
                   display: "block",
                   transform: `scaleX(${perspectiveScale})`,
+                  // Sombra suave para dar profundidad
+                  filter: "drop-shadow(0 4px 12px rgba(249,115,22,0.18))",
                 }}
               >
                 <defs>
-                  <filter
-                    id="glow-part"
-                    x="-30%"
-                    y="-30%"
-                    width="160%"
-                    height="160%"
-                  >
-                    <feGaussianBlur stdDeviation="3" result="blur" />
-                    <feMerge>
-                      <feMergeNode in="blur" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-                  <filter
-                    id="glow-active"
-                    x="-50%"
-                    y="-50%"
-                    width="200%"
-                    height="200%"
-                  >
-                    <feGaussianBlur stdDeviation="6" result="blur" />
-                    <feMerge>
-                      <feMergeNode in="blur" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
+                  {/* Gradiente base del cuerpo (blanco a gris muy suave) */}
                   <linearGradient
                     id="body-base"
                     x1="0%"
@@ -397,69 +373,42 @@ export default function HologramaClient({
                     x2="100%"
                     y2="100%"
                   >
-                    <stop offset="0%" stopColor="#0d1f35" />
-                    <stop offset="100%" stopColor="#060f1a" />
+                    <stop offset="0%" stopColor="#f9fafb" />
+                    <stop offset="100%" stopColor="#f3f4f6" />
                   </linearGradient>
+                  {/* Efecto glow suave para parte activa */}
+                  <filter
+                    id="glow-active"
+                    x="-40%"
+                    y="-40%"
+                    width="180%"
+                    height="180%"
+                  >
+                    <feGaussianBlur stdDeviation="4" result="blur" />
+                    <feMerge>
+                      <feMergeNode in="blur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                  <filter
+                    id="glow-part"
+                    x="-20%"
+                    y="-20%"
+                    width="140%"
+                    height="140%"
+                  >
+                    <feGaussianBlur stdDeviation="1.5" result="blur" />
+                    <feMerge>
+                      <feMergeNode in="blur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
                 </defs>
 
                 {!showBack ? (
                   genero === "M" ? (
+                    /* ── NIÑO FRENTE ── */
                     <g>
-                      <line
-                        x1="8"
-                        y1="60"
-                        x2="20"
-                        y2="60"
-                        stroke={accentColor}
-                        strokeWidth="0.6"
-                        opacity="0.4"
-                      />
-                      <line
-                        x1="8"
-                        y1="64"
-                        x2="16"
-                        y2="64"
-                        stroke={accentColor}
-                        strokeWidth="0.4"
-                        opacity="0.25"
-                      />
-                      <line
-                        x1="180"
-                        y1="60"
-                        x2="192"
-                        y2="60"
-                        stroke={accentColor}
-                        strokeWidth="0.6"
-                        opacity="0.4"
-                      />
-                      <line
-                        x1="184"
-                        y1="64"
-                        x2="192"
-                        y2="64"
-                        stroke={accentColor}
-                        strokeWidth="0.4"
-                        opacity="0.25"
-                      />
-                      <line
-                        x1="8"
-                        y1="190"
-                        x2="20"
-                        y2="190"
-                        stroke={accentColor}
-                        strokeWidth="0.6"
-                        opacity="0.4"
-                      />
-                      <line
-                        x1="180"
-                        y1="190"
-                        x2="192"
-                        y2="190"
-                        stroke={accentColor}
-                        strokeWidth="0.6"
-                        opacity="0.4"
-                      />
-
                       {/* CABEZA — SABER */}
                       <g
                         onClick={() =>
@@ -472,22 +421,23 @@ export default function HologramaClient({
                             : "url(#glow-part)"
                         }
                       >
+                        {/* Cráneo */}
                         <ellipse
                           cx="100"
                           cy="44"
                           rx="25"
                           ry="27"
                           fill={saberColor.fill}
-                          fillOpacity={saberColor.opacity}
                           stroke={saberColor.stroke}
-                          strokeWidth="1"
+                          strokeWidth={saberColor.strokeWidth}
                         />
+                        {/* Ojos */}
                         <ellipse
                           cx="91"
                           cy="41"
                           rx="4"
                           ry="4.5"
-                          fill="#010810"
+                          fill="white"
                           stroke={saberColor.stroke}
                           strokeWidth="0.5"
                         />
@@ -496,58 +446,74 @@ export default function HologramaClient({
                           cy="41"
                           rx="4"
                           ry="4.5"
-                          fill="#010810"
+                          fill="white"
                           stroke={saberColor.stroke}
                           strokeWidth="0.5"
                         />
                         <circle
                           cx="92.5"
                           cy="39.5"
-                          r="1.2"
+                          r="1.5"
                           fill={saberColor.accent}
-                          opacity="0.9"
                         />
                         <circle
                           cx="110.5"
                           cy="39.5"
-                          r="1.2"
+                          r="1.5"
                           fill={saberColor.accent}
-                          opacity="0.9"
                         />
-                        <path
-                          d="M93,53 Q100,58 107,53"
-                          fill="none"
-                          stroke={saberColor.stroke}
-                          strokeWidth="0.7"
-                          strokeLinecap="round"
+                        {/* Pupila reflejo */}
+                        <circle
+                          cx="93.5"
+                          cy="38.5"
+                          r="0.5"
+                          fill="white"
+                          opacity="0.8"
                         />
+                        <circle
+                          cx="111.5"
+                          cy="38.5"
+                          r="0.5"
+                          fill="white"
+                          opacity="0.8"
+                        />
+                        {/* Nariz */}
                         <path
                           d="M98,47 L96,51 L104,51"
                           fill="none"
                           stroke={saberColor.stroke}
-                          strokeWidth="0.5"
+                          strokeWidth="0.6"
                           strokeLinecap="round"
                           strokeLinejoin="round"
-                          opacity="0.7"
+                          opacity="0.6"
                         />
+                        {/* Boca sonrisa */}
+                        <path
+                          d="M93,55 Q100,60 107,55"
+                          fill="none"
+                          stroke={saberColor.stroke}
+                          strokeWidth="0.8"
+                          strokeLinecap="round"
+                        />
+                        {/* Orejas */}
                         <path
                           d="M75,38 Q71,44 75,50"
                           fill="none"
                           stroke={saberColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth="1"
                           opacity="0.7"
                         />
                         <path
                           d="M125,38 Q129,44 125,50"
                           fill="none"
                           stroke={saberColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth="1"
                           opacity="0.7"
                         />
+                        {/* Pelo */}
                         <path
                           d="M76,24 Q80,13 100,16 Q120,13 124,24"
                           fill={saberColor.fill}
-                          fillOpacity="0.6"
                           stroke={saberColor.stroke}
                           strokeWidth="1.2"
                         />
@@ -557,9 +523,9 @@ export default function HologramaClient({
                           x2="84"
                           y2="9"
                           stroke={saberColor.stroke}
-                          strokeWidth="0.9"
+                          strokeWidth="1"
                           strokeLinecap="round"
-                          opacity="0.6"
+                          opacity="0.7"
                         />
                         <line
                           x1="100"
@@ -567,9 +533,9 @@ export default function HologramaClient({
                           x2="100"
                           y2="7"
                           stroke={saberColor.stroke}
-                          strokeWidth="0.9"
+                          strokeWidth="1"
                           strokeLinecap="round"
-                          opacity="0.6"
+                          opacity="0.7"
                         />
                         <line
                           x1="114"
@@ -577,38 +543,40 @@ export default function HologramaClient({
                           x2="116"
                           y2="9"
                           stroke={saberColor.stroke}
-                          strokeWidth="0.9"
+                          strokeWidth="1"
                           strokeLinecap="round"
-                          opacity="0.6"
+                          opacity="0.7"
                         />
+                        {/* Coronita / indicador SABER */}
                         <circle
                           cx="100"
-                          cy="3"
-                          r="1.8"
+                          cy="4"
+                          r="3"
                           fill={saberColor.stroke}
-                          opacity="0.5"
+                          fillOpacity="0.15"
+                          stroke={saberColor.stroke}
+                          strokeWidth="0.6"
                         />
                         <circle
                           cx="100"
-                          cy="3"
-                          r="3.5"
-                          fill="none"
-                          stroke={saberColor.stroke}
-                          strokeWidth="0.4"
-                          opacity="0.3"
+                          cy="4"
+                          r="1.2"
+                          fill={saberColor.accent}
+                          opacity="0.7"
                         />
                       </g>
 
+                      {/* Cuello */}
                       <rect
                         x="93"
                         y="70"
                         width="14"
                         height="14"
-                        rx="2"
+                        rx="3"
                         fill="url(#body-base)"
                         stroke={accentColor}
-                        strokeWidth="0.5"
-                        opacity="0.7"
+                        strokeWidth="0.6"
+                        opacity="0.5"
                       />
 
                       {/* TRONCO — SER */}
@@ -626,17 +594,19 @@ export default function HologramaClient({
                         <path
                           d="M76,84 C72,89 70,103 72,122 C74,141 79,162 83,175 L117,175 C121,162 126,141 128,122 C130,103 128,89 124,84 Z"
                           fill={serColor.fill}
-                          fillOpacity={serColor.opacity}
                           stroke={serColor.stroke}
-                          strokeWidth="1"
+                          strokeWidth={serColor.strokeWidth}
                         />
+                        {/* Corazón decorativo */}
                         <path
                           d="M100,106 C100,106 94,99 90,102 C86,105 87,112 100,120 C113,112 114,105 110,102 C106,99 100,106 100,106 Z"
-                          fill="none"
+                          fill={serColor.accent}
+                          fillOpacity="0.18"
                           stroke={serColor.stroke}
-                          strokeWidth="1"
+                          strokeWidth="0.8"
                           opacity="0.8"
                         />
+                        {/* Líneas de estructura */}
                         <line
                           x1="82"
                           y1="138"
@@ -644,7 +614,7 @@ export default function HologramaClient({
                           y2="138"
                           stroke={serColor.stroke}
                           strokeWidth="0.4"
-                          opacity="0.4"
+                          opacity="0.35"
                         />
                         <line
                           x1="90"
@@ -653,7 +623,7 @@ export default function HologramaClient({
                           y2="145"
                           stroke={serColor.stroke}
                           strokeWidth="0.4"
-                          opacity="0.4"
+                          opacity="0.35"
                         />
                         <line
                           x1="110"
@@ -662,7 +632,7 @@ export default function HologramaClient({
                           y2="138"
                           stroke={serColor.stroke}
                           strokeWidth="0.4"
-                          opacity="0.4"
+                          opacity="0.35"
                         />
                         <line
                           x1="110"
@@ -671,7 +641,7 @@ export default function HologramaClient({
                           y2="145"
                           stroke={serColor.stroke}
                           strokeWidth="0.4"
-                          opacity="0.4"
+                          opacity="0.35"
                         />
                         <circle
                           cx="90"
@@ -680,7 +650,7 @@ export default function HologramaClient({
                           fill="none"
                           stroke={serColor.stroke}
                           strokeWidth="0.4"
-                          opacity="0.4"
+                          opacity="0.35"
                         />
                         <circle
                           cx="110"
@@ -689,7 +659,7 @@ export default function HologramaClient({
                           fill="none"
                           stroke={serColor.stroke}
                           strokeWidth="0.4"
-                          opacity="0.4"
+                          opacity="0.35"
                         />
                         <line
                           x1="78"
@@ -698,7 +668,7 @@ export default function HologramaClient({
                           y2="162"
                           stroke={serColor.stroke}
                           strokeWidth="0.4"
-                          opacity="0.3"
+                          opacity="0.25"
                           strokeDasharray="2,2"
                         />
                       </g>
@@ -715,15 +685,15 @@ export default function HologramaClient({
                             : "url(#glow-part)"
                         }
                       >
+                        {/* Brazo izq */}
                         <ellipse
                           cx="72"
                           cy="90"
                           rx="7"
                           ry="6"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                         <rect
                           x="56"
@@ -732,9 +702,8 @@ export default function HologramaClient({
                           height="40"
                           rx="6"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(-9,63,108)"
                         />
                         <circle
@@ -742,7 +711,6 @@ export default function HologramaClient({
                           cy="130"
                           r="6"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
                           strokeWidth="0.7"
                         />
@@ -753,9 +721,8 @@ export default function HologramaClient({
                           height="34"
                           rx="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(-6,53,145)"
                         />
                         <ellipse
@@ -764,19 +731,18 @@ export default function HologramaClient({
                           rx="8"
                           ry="5.5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
+                        {/* Brazo der */}
                         <ellipse
                           cx="128"
                           cy="90"
                           rx="7"
                           ry="6"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                         <rect
                           x="129"
@@ -785,9 +751,8 @@ export default function HologramaClient({
                           height="40"
                           rx="6"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(9,137,108)"
                         />
                         <circle
@@ -795,7 +760,6 @@ export default function HologramaClient({
                           cy="130"
                           r="6"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
                           strokeWidth="0.7"
                         />
@@ -806,9 +770,8 @@ export default function HologramaClient({
                           height="34"
                           rx="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(6,147,145)"
                         />
                         <ellipse
@@ -817,9 +780,8 @@ export default function HologramaClient({
                           rx="8"
                           ry="5.5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                       </g>
 
@@ -838,9 +800,8 @@ export default function HologramaClient({
                         <path
                           d="M80,175 L120,175 L122,194 L78,194 Z"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                         <rect
                           x="78"
@@ -849,9 +810,8 @@ export default function HologramaClient({
                           height="50"
                           rx="8"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(-2,87,217)"
                         />
                         <circle
@@ -859,7 +819,6 @@ export default function HologramaClient({
                           cy="244"
                           r="8"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
                           strokeWidth="0.7"
                         />
@@ -870,9 +829,8 @@ export default function HologramaClient({
                           height="46"
                           rx="7"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(1,86,273)"
                         />
                         <ellipse
@@ -881,9 +839,8 @@ export default function HologramaClient({
                           rx="11"
                           ry="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                         <rect
                           x="103"
@@ -892,9 +849,8 @@ export default function HologramaClient({
                           height="50"
                           rx="8"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(2,113,217)"
                         />
                         <circle
@@ -902,7 +858,6 @@ export default function HologramaClient({
                           cy="244"
                           r="8"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
                           strokeWidth="0.7"
                         />
@@ -913,9 +868,8 @@ export default function HologramaClient({
                           height="46"
                           rx="7"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(-1,114,273)"
                         />
                         <ellipse
@@ -924,52 +878,14 @@ export default function HologramaClient({
                           rx="11"
                           ry="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                       </g>
                     </g>
                   ) : (
                     /* ── NIÑA FRENTE ── */
                     <g>
-                      <line
-                        x1="8"
-                        y1="60"
-                        x2="20"
-                        y2="60"
-                        stroke={accentColor}
-                        strokeWidth="0.6"
-                        opacity="0.4"
-                      />
-                      <line
-                        x1="8"
-                        y1="64"
-                        x2="16"
-                        y2="64"
-                        stroke={accentColor}
-                        strokeWidth="0.4"
-                        opacity="0.25"
-                      />
-                      <line
-                        x1="180"
-                        y1="60"
-                        x2="192"
-                        y2="60"
-                        stroke={accentColor}
-                        strokeWidth="0.6"
-                        opacity="0.4"
-                      />
-                      <line
-                        x1="184"
-                        y1="64"
-                        x2="192"
-                        y2="64"
-                        stroke={accentColor}
-                        strokeWidth="0.4"
-                        opacity="0.25"
-                      />
-
                       {/* CABEZA — SABER */}
                       <g
                         onClick={() =>
@@ -988,16 +904,15 @@ export default function HologramaClient({
                           rx="24"
                           ry="26"
                           fill={saberColor.fill}
-                          fillOpacity={saberColor.opacity}
                           stroke={saberColor.stroke}
-                          strokeWidth="1"
+                          strokeWidth={saberColor.strokeWidth}
                         />
                         <ellipse
                           cx="91"
                           cy="42"
                           rx="4.5"
                           ry="5"
-                          fill="#010810"
+                          fill="white"
                           stroke={saberColor.stroke}
                           strokeWidth="0.6"
                         />
@@ -1006,24 +921,37 @@ export default function HologramaClient({
                           cy="42"
                           rx="4.5"
                           ry="5"
-                          fill="#010810"
+                          fill="white"
                           stroke={saberColor.stroke}
                           strokeWidth="0.6"
                         />
                         <circle
                           cx="93"
                           cy="40"
-                          r="1.4"
+                          r="1.5"
                           fill={saberColor.accent}
-                          opacity="0.9"
                         />
                         <circle
                           cx="111"
                           cy="40"
-                          r="1.4"
+                          r="1.5"
                           fill={saberColor.accent}
-                          opacity="0.9"
                         />
+                        <circle
+                          cx="94"
+                          cy="39"
+                          r="0.5"
+                          fill="white"
+                          opacity="0.8"
+                        />
+                        <circle
+                          cx="112"
+                          cy="39"
+                          r="0.5"
+                          fill="white"
+                          opacity="0.8"
+                        />
+                        {/* Pestañas */}
                         <line
                           x1="87"
                           y1="36"
@@ -1078,29 +1006,32 @@ export default function HologramaClient({
                           strokeWidth="0.7"
                           strokeLinecap="round"
                         />
+                        {/* Boca */}
                         <path
                           d="M93,54 Q100,60 107,54"
                           fill="none"
                           stroke={saberColor.stroke}
-                          strokeWidth="0.7"
+                          strokeWidth="0.8"
                           strokeLinecap="round"
                         />
+                        {/* Mejillas */}
                         <ellipse
                           cx="85"
                           cy="50"
                           rx="4"
                           ry="2.5"
-                          fill={saberColor.stroke}
-                          opacity="0.1"
+                          fill={saberColor.accent}
+                          opacity="0.12"
                         />
                         <ellipse
                           cx="115"
                           cy="50"
                           rx="4"
                           ry="2.5"
-                          fill={saberColor.stroke}
-                          opacity="0.1"
+                          fill={saberColor.accent}
+                          opacity="0.12"
                         />
+                        {/* Orejas */}
                         <path
                           d="M76,38 Q72,44 76,50"
                           fill="none"
@@ -1115,10 +1046,10 @@ export default function HologramaClient({
                           strokeWidth="0.8"
                           opacity="0.7"
                         />
+                        {/* Cabello */}
                         <path
                           d="M77,26 Q75,10 80,6 Q90,2 100,4 Q110,2 120,6 Q125,10 123,26"
                           fill={saberColor.fill}
-                          fillOpacity="0.5"
                           stroke={saberColor.stroke}
                           strokeWidth="1.2"
                         />
@@ -1128,7 +1059,7 @@ export default function HologramaClient({
                           stroke={saberColor.stroke}
                           strokeWidth="1.8"
                           strokeLinecap="round"
-                          opacity="0.8"
+                          opacity="0.7"
                         />
                         <path
                           d="M124,34 Q131,54 129,74 Q127,84 124,88"
@@ -1136,15 +1067,15 @@ export default function HologramaClient({
                           stroke={saberColor.stroke}
                           strokeWidth="1.8"
                           strokeLinecap="round"
-                          opacity="0.8"
+                          opacity="0.7"
                         />
+                        {/* Moño */}
                         <ellipse
                           cx="100"
                           cy="4"
                           rx="5"
                           ry="4"
                           fill={saberColor.fill}
-                          fillOpacity="0.8"
                           stroke={saberColor.stroke}
                           strokeWidth="0.8"
                         />
@@ -1155,34 +1086,19 @@ export default function HologramaClient({
                           fill={saberColor.accent}
                           opacity="0.7"
                         />
-                        <circle
-                          cx="100"
-                          cy="-4"
-                          r="1.8"
-                          fill={saberColor.stroke}
-                          opacity="0.5"
-                        />
-                        <circle
-                          cx="100"
-                          cy="-4"
-                          r="3.5"
-                          fill="none"
-                          stroke={saberColor.stroke}
-                          strokeWidth="0.4"
-                          opacity="0.3"
-                        />
                       </g>
 
+                      {/* Cuello */}
                       <rect
                         x="93"
                         y="69"
                         width="14"
                         height="13"
-                        rx="2"
+                        rx="3"
                         fill="url(#body-base)"
                         stroke={accentColor}
-                        strokeWidth="0.5"
-                        opacity="0.7"
+                        strokeWidth="0.6"
+                        opacity="0.5"
                       />
 
                       {/* TRONCO — SER */}
@@ -1200,23 +1116,24 @@ export default function HologramaClient({
                         <path
                           d="M80,82 C76,87 74,100 76,116 C78,130 82,146 84,160 L116,160 C118,146 122,130 124,116 C126,100 124,87 120,82 Z"
                           fill={serColor.fill}
-                          fillOpacity={serColor.opacity}
                           stroke={serColor.stroke}
-                          strokeWidth="1"
+                          strokeWidth={serColor.strokeWidth}
                         />
+                        {/* Corazón */}
                         <path
                           d="M100,102 C100,102 94,95 90,98 C86,101 87,108 100,116 C113,108 114,101 110,98 C106,95 100,102 100,102 Z"
-                          fill="none"
+                          fill={serColor.accent}
+                          fillOpacity="0.18"
                           stroke={serColor.stroke}
-                          strokeWidth="1"
+                          strokeWidth="0.8"
                           opacity="0.8"
                         />
                         <path
                           d="M84,82 Q100,88 116,82"
                           fill="none"
                           stroke={serColor.stroke}
-                          strokeWidth="0.6"
-                          opacity="0.5"
+                          strokeWidth="0.5"
+                          opacity="0.4"
                         />
                         <line
                           x1="84"
@@ -1225,7 +1142,7 @@ export default function HologramaClient({
                           y2="128"
                           stroke={serColor.stroke}
                           strokeWidth="0.4"
-                          opacity="0.35"
+                          opacity="0.3"
                         />
                         <line
                           x1="106"
@@ -1234,7 +1151,7 @@ export default function HologramaClient({
                           y2="128"
                           stroke={serColor.stroke}
                           strokeWidth="0.4"
-                          opacity="0.35"
+                          opacity="0.3"
                         />
                         <circle
                           cx="100"
@@ -1243,7 +1160,7 @@ export default function HologramaClient({
                           fill="none"
                           stroke={serColor.stroke}
                           strokeWidth="0.4"
-                          opacity="0.4"
+                          opacity="0.35"
                         />
                       </g>
 
@@ -1265,9 +1182,8 @@ export default function HologramaClient({
                           rx="6"
                           ry="5.5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                         <rect
                           x="62"
@@ -1276,9 +1192,8 @@ export default function HologramaClient({
                           height="36"
                           rx="5.5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(-7,68,103)"
                         />
                         <circle
@@ -1286,7 +1201,6 @@ export default function HologramaClient({
                           cy="123"
                           r="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
                           strokeWidth="0.7"
                         />
@@ -1297,9 +1211,8 @@ export default function HologramaClient({
                           height="30"
                           rx="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(-5,57,136)"
                         />
                         <ellipse
@@ -1308,9 +1221,8 @@ export default function HologramaClient({
                           rx="7"
                           ry="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                         <ellipse
                           cx="124"
@@ -1318,9 +1230,8 @@ export default function HologramaClient({
                           rx="6"
                           ry="5.5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                         <rect
                           x="125"
@@ -1329,9 +1240,8 @@ export default function HologramaClient({
                           height="36"
                           rx="5.5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(7,132,103)"
                         />
                         <circle
@@ -1339,7 +1249,6 @@ export default function HologramaClient({
                           cy="123"
                           r="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
                           strokeWidth="0.7"
                         />
@@ -1350,9 +1259,8 @@ export default function HologramaClient({
                           height="30"
                           rx="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(5,143,136)"
                         />
                         <ellipse
@@ -1361,9 +1269,8 @@ export default function HologramaClient({
                           rx="7"
                           ry="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                       </g>
 
@@ -1382,9 +1289,8 @@ export default function HologramaClient({
                         <path
                           d="M82,160 L118,160 L126,206 L74,206 Z"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="1"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                         <line
                           x1="76"
@@ -1393,7 +1299,7 @@ export default function HologramaClient({
                           y2="175"
                           stroke={hacerColor.stroke}
                           strokeWidth="0.4"
-                          opacity="0.35"
+                          opacity="0.3"
                         />
                         <line
                           x1="74"
@@ -1402,7 +1308,7 @@ export default function HologramaClient({
                           y2="190"
                           stroke={hacerColor.stroke}
                           strokeWidth="0.4"
-                          opacity="0.35"
+                          opacity="0.3"
                         />
                         <rect
                           x="80"
@@ -1411,9 +1317,8 @@ export default function HologramaClient({
                           height="48"
                           rx="6"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(-2,87,228)"
                         />
                         <circle
@@ -1421,7 +1326,6 @@ export default function HologramaClient({
                           cy="254"
                           r="7"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
                           strokeWidth="0.7"
                         />
@@ -1432,9 +1336,8 @@ export default function HologramaClient({
                           height="38"
                           rx="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(1,86,278)"
                         />
                         <ellipse
@@ -1443,9 +1346,8 @@ export default function HologramaClient({
                           rx="10"
                           ry="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                         <rect
                           x="105"
@@ -1454,9 +1356,8 @@ export default function HologramaClient({
                           height="48"
                           rx="6"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(2,113,228)"
                         />
                         <circle
@@ -1464,7 +1365,6 @@ export default function HologramaClient({
                           cy="254"
                           r="7"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
                           strokeWidth="0.7"
                         />
@@ -1475,9 +1375,8 @@ export default function HologramaClient({
                           height="38"
                           rx="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                           transform="rotate(-1,114,278)"
                         />
                         <ellipse
@@ -1486,40 +1385,37 @@ export default function HologramaClient({
                           rx="10"
                           ry="5"
                           fill={hacerColor.fill}
-                          fillOpacity={hacerColor.opacity}
                           stroke={hacerColor.stroke}
-                          strokeWidth="0.8"
+                          strokeWidth={hacerColor.strokeWidth}
                         />
                       </g>
                     </g>
                   )
                 ) : (
                   /* ── VISTA TRASERA UNIFICADA ── */
-                  <g opacity="0.75">
+                  <g opacity="0.65">
                     <ellipse
                       cx="100"
                       cy="44"
                       rx="25"
                       ry="27"
                       fill={saberColor.fill}
-                      fillOpacity="0.7"
                       stroke={saberColor.stroke}
                       strokeWidth="0.8"
-                      strokeDasharray="2,1"
+                      strokeDasharray="2,1.5"
                     />
                     <path
                       d="M88,68 Q100,72 112,68"
                       fill="none"
                       stroke={saberColor.stroke}
                       strokeWidth="0.6"
-                      opacity="0.5"
+                      opacity="0.4"
                     />
                     {genero === "F" ? (
                       <g>
                         <path
-                          d="M76,25 Q74,10 80,6 Q90,2 100,4 Q110,2 120,6 Q126,10 124,25"
+                          d="M77,26 Q75,10 80,6 Q90,2 100,4 Q110,2 120,6 Q125,10 123,26"
                           fill={saberColor.fill}
-                          fillOpacity="0.5"
                           stroke={saberColor.stroke}
                           strokeWidth="1"
                         />
@@ -1529,7 +1425,7 @@ export default function HologramaClient({
                           stroke={saberColor.stroke}
                           strokeWidth="1.8"
                           strokeLinecap="round"
-                          opacity="0.6"
+                          opacity="0.5"
                         />
                         <path
                           d="M124,34 Q131,54 129,74 Q127,84 124,88"
@@ -1537,14 +1433,13 @@ export default function HologramaClient({
                           stroke={saberColor.stroke}
                           strokeWidth="1.8"
                           strokeLinecap="round"
-                          opacity="0.6"
+                          opacity="0.5"
                         />
                       </g>
                     ) : (
                       <path
                         d="M76,24 Q80,13 100,16 Q120,13 124,24"
                         fill={saberColor.fill}
-                        fillOpacity="0.5"
                         stroke={saberColor.stroke}
                         strokeWidth="1"
                       />
@@ -1554,19 +1449,18 @@ export default function HologramaClient({
                       y="70"
                       width="14"
                       height="14"
-                      rx="2"
+                      rx="3"
                       fill="url(#body-base)"
                       stroke={accentColor}
                       strokeWidth="0.5"
-                      opacity="0.5"
+                      opacity="0.4"
                     />
                     <path
                       d="M76,84 C72,89 70,103 72,122 C74,141 79,162 83,175 L117,175 C121,162 126,141 128,122 C130,103 128,89 124,84 Z"
                       fill={serColor.fill}
-                      fillOpacity="0.65"
                       stroke={serColor.stroke}
                       strokeWidth="0.8"
-                      strokeDasharray="2,1"
+                      strokeDasharray="2,1.5"
                     />
                     <line
                       x1="100"
@@ -1575,7 +1469,7 @@ export default function HologramaClient({
                       y2="172"
                       stroke={serColor.stroke}
                       strokeWidth="0.5"
-                      opacity="0.35"
+                      opacity="0.25"
                       strokeDasharray="3,2"
                     />
                     <ellipse
@@ -1584,10 +1478,9 @@ export default function HologramaClient({
                       rx="7"
                       ry="6"
                       fill={hacerColor.fill}
-                      fillOpacity="0.6"
                       stroke={hacerColor.stroke}
                       strokeWidth="0.7"
-                      strokeDasharray="2,1"
+                      strokeDasharray="2,1.5"
                     />
                     <rect
                       x="56"
@@ -1596,10 +1489,9 @@ export default function HologramaClient({
                       height="40"
                       rx="6"
                       fill={hacerColor.fill}
-                      fillOpacity="0.5"
                       stroke={hacerColor.stroke}
                       strokeWidth="0.7"
-                      strokeDasharray="2,1"
+                      strokeDasharray="2,1.5"
                       transform="rotate(-9,63,108)"
                     />
                     <ellipse
@@ -1608,10 +1500,9 @@ export default function HologramaClient({
                       rx="7"
                       ry="6"
                       fill={hacerColor.fill}
-                      fillOpacity="0.6"
                       stroke={hacerColor.stroke}
                       strokeWidth="0.7"
-                      strokeDasharray="2,1"
+                      strokeDasharray="2,1.5"
                     />
                     <rect
                       x="129"
@@ -1620,19 +1511,17 @@ export default function HologramaClient({
                       height="40"
                       rx="6"
                       fill={hacerColor.fill}
-                      fillOpacity="0.5"
                       stroke={hacerColor.stroke}
                       strokeWidth="0.7"
-                      strokeDasharray="2,1"
+                      strokeDasharray="2,1.5"
                       transform="rotate(9,137,108)"
                     />
                     <path
                       d="M80,175 L120,175 L122,194 L78,194 Z"
                       fill={hacerColor.fill}
-                      fillOpacity="0.55"
                       stroke={hacerColor.stroke}
                       strokeWidth="0.7"
-                      strokeDasharray="2,1"
+                      strokeDasharray="2,1.5"
                     />
                     <rect
                       x="78"
@@ -1641,10 +1530,9 @@ export default function HologramaClient({
                       height="100"
                       rx="8"
                       fill={hacerColor.fill}
-                      fillOpacity="0.5"
                       stroke={hacerColor.stroke}
                       strokeWidth="0.7"
-                      strokeDasharray="2,1"
+                      strokeDasharray="2,1.5"
                       transform="rotate(-2,87,242)"
                     />
                     <rect
@@ -1654,15 +1542,15 @@ export default function HologramaClient({
                       height="100"
                       rx="8"
                       fill={hacerColor.fill}
-                      fillOpacity="0.5"
                       stroke={hacerColor.stroke}
                       strokeWidth="0.7"
-                      strokeDasharray="2,1"
+                      strokeDasharray="2,1.5"
                       transform="rotate(2,113,242)"
                     />
                   </g>
                 )}
 
+                {/* Sombra de suelo */}
                 <ellipse
                   cx="100"
                   cy="316"
@@ -1671,7 +1559,7 @@ export default function HologramaClient({
                   fill="none"
                   stroke={accentColor}
                   strokeWidth="0.6"
-                  opacity="0.3"
+                  opacity="0.15"
                   strokeDasharray="3,2"
                 />
                 <ellipse
@@ -1683,68 +1571,38 @@ export default function HologramaClient({
                   fillOpacity="0.06"
                   stroke={accentColor}
                   strokeWidth="0.4"
-                  opacity="0.4"
-                />
-                <circle
-                  cx="28"
-                  cy="110"
-                  r="1.2"
-                  fill={accentColor}
-                  opacity="0.3"
-                />
-                <circle
-                  cx="172"
-                  cy="140"
-                  r="0.9"
-                  fill={accentColor}
-                  opacity="0.25"
-                />
-                <circle
-                  cx="22"
-                  cy="240"
-                  r="0.8"
-                  fill={accentColor}
-                  opacity="0.2"
-                />
-                <circle
-                  cx="178"
-                  cy="85"
-                  r="1.2"
-                  fill={accentColor}
                   opacity="0.3"
                 />
               </svg>
             </div>
 
-            <div
-              className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[8px] font-mono tracking-wider pointer-events-none"
-              style={{ color: `rgba(${accentRgb},0.35)` }}
-            >
-              {isDragging ? "◈ ROTANDO" : "◂ ARRASTRAR PARA ROTAR ▸"}
+            {/* Hint arrastrar */}
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none">
+              <span className="text-[8px] font-mono tracking-wider text-orange-400 font-bold bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">
+                {isDragging ? "◈ Rotando" : "◂ Arrastrar para rotar ▸"}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center justify-between px-4 py-2 border-t border-slate-800 bg-slate-950/40">
-            <span className="text-[8px] font-mono tracking-widest text-slate-500 font-bold">
+          {/* Barra inferior de estado */}
+          <div className="flex items-center justify-between px-4 py-2 border-t border-gray-100 bg-gray-50/60">
+            <span className="text-[8px] font-mono tracking-widest text-gray-400 font-bold">
               ROT {Math.round(((rotY % 360) + 360) % 360)}°
             </span>
-            <span
-              className="text-[8px] font-black uppercase tracking-widest"
-              style={{ color: `rgba(${accentRgb},0.5)` }}
-            >
-              {showBack ? "VISTA POSTERIOR" : "VISTA FRONTAL"}
+            <span className="text-[8px] font-black uppercase tracking-widest text-orange-500">
+              {showBack ? "Vista Posterior" : "Vista Frontal"}
             </span>
-            <span className="text-[8px] font-mono tracking-widest text-slate-500 font-bold">
+            <span className="text-[8px] font-mono tracking-widest text-gray-400 font-bold">
               {genero === "M" ? "MASC" : "FEM"}
             </span>
           </div>
         </div>
 
         {/* ═══════════════════════════════════════
-            COLUMNA DERECHA: DIMENSIONES (Look Naranja KinderApp)
+            COLUMNA DERECHA: DIMENSIONES
         ═══════════════════════════════════════ */}
         <div className="space-y-3">
-          <div className="bg-white border border-gray-100 p-4 rounded-xl shadow-xs">
+          <div className="bg-white border border-gray-100 p-4 rounded-xl shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <div className="w-px h-4 bg-orange-500" />
               <h3 className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
@@ -1927,8 +1785,8 @@ export default function HologramaClient({
             </div>
           </div>
 
-          {/* Leyenda (Moderna sobre fondo blanco corporativo) */}
-          <div className="bg-white border border-gray-100 p-3 rounded-xl shadow-xs">
+          {/* Leyenda */}
+          <div className="bg-white border border-gray-100 p-3 rounded-xl shadow-sm">
             <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2">
               Escala de Evaluación Oficial
             </p>
