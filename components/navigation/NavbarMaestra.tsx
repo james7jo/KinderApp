@@ -19,6 +19,7 @@ import {
   X,
   Users2,
   QrCode,
+  ClipboardCheck,
 } from "lucide-react";
 
 // Navegación estática raíz
@@ -37,10 +38,11 @@ const navMain = [
   },
 ];
 
-// 🎯 TODAS LAS NUEVAS OPCIONES DE GESTIÓN DE TU CURSOHUB INYECTADAS AQUÍ
+// TODAS LAS NUEVAS OPCIONES DE
 const accesosRapidos = [
   { label: "Lista de Alumnos", icon: Users, slug: "alumnos" },
   { label: "Bitácora Diaria", icon: ClipboardList, slug: "bitacora" },
+  { label: "Licencias y Permisos", icon: ClipboardCheck, slug: "licencias" },
   { label: "Avisos de Aula", icon: Bell, slug: "avisos" },
   { label: "Actividades", icon: Calendar, slug: "actividades" },
   { label: "Cámaras en Vivo", icon: Video, slug: "camara" },
