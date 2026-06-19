@@ -18,8 +18,9 @@ import {
   ChevronUp,
   Activity,
   ClipboardCheck,
-  Menu, // 🔥 Importamos los íconos de control para el Drawer móvil
+  Menu,
   X,
+  FileText,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -100,6 +101,12 @@ export default function NavbarPadre({
       href: `/dashboard/padre/hijo/${hijoId}/holograma`,
       label: "Mapa Corporal",
       icon: Activity,
+    },
+    // ====== AGREGA ESTO AL ARREGLO DE ENLACES DEL PAPÁ ======
+    {
+      href: `/dashboard/padre/hijo/${hijoId}/reporte-semanal`,
+      label: "Reporte Semanal",
+      icon: FileText, // Asegúrate de tener importado 'FileText' desde lucide-react
     },
   ];
 

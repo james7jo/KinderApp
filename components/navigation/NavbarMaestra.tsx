@@ -20,6 +20,8 @@ import {
   Users2,
   QrCode,
   ClipboardCheck,
+  TrendingUp,
+  Calculator,
 } from "lucide-react";
 
 // Navegación estática raíz
@@ -50,6 +52,8 @@ const accesosRapidos = [
   { label: "Recogida QR", icon: QrCode, slug: "recogida" },
   { label: "Evaluaciones", icon: BookOpen, slug: "evaluacion-cosmos" },
   { label: "Planificación Anual (PAT)", icon: Calendar, slug: "planificacion" },
+  { label: "Tendencias y Gráficos", icon: TrendingUp, slug: "regresiones" },
+  { label: "Cierre Trimestral", icon: Calculator, slug: "cierre-trimestral" },
 ];
 
 export default function NavbarMaestra({

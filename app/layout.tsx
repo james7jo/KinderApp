@@ -9,7 +9,7 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: "EduKinder",
+  title: "KinderApp",
   description: "Sistema de gestión educativa",
 };
 

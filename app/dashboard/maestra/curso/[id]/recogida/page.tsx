@@ -1,4 +1,5 @@
 "use client";
+
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useParams } from "next/navigation";
@@ -18,6 +19,8 @@ import {
   LogOut,
   Search,
   MousePointerClick,
+  ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
 import QRCode from "react-qr-code";
 
@@ -34,11 +37,18 @@ type Tutor = {
   relacion: string;
   foto_url?: string | null;
 };
-type Recogida = {
+type PlanRecogida = {
   id: string;
   alumno_id: string;
   token: string;
   activo: boolean;
+  estado_aprobacion:
+    | "pendiente"
+    | "esperando_aprobacion"
+    | "aprobado"
+    | "rechazado";
+  recolector_nombre?: string | null;
+  recolector_email?: string | null;
   escaneado_at?: string;
   expires_at: string;
 };
@@ -59,11 +69,11 @@ export default function RecogidaMaestraPage() {
   const [cursoNombre, setCursoNombre] = useState("");
   const [alumnos, setAlumnos] = useState<Alumno[]>([]);
   const [tutores, setTutores] = useState<Tutor[]>([]);
-  const [recogidas, setRecogidas] = useState<Recogida[]>([]);
+  const [planRecogidas, setPlanRecogidas] = useState<PlanRecogida[]>([]);
   const [notifs, setNotifs] = useState<Notificacion[]>([]);
   const [qrModal, setQrModal] = useState<{
     alumno: Alumno;
-    recogida: Recogida;
+    recogida: PlanRecogida;
   } | null>(null);
   const [seleccionado, setSeleccionado] = useState<Alumno | null>(null);
   const [generando, setGenerando] = useState<string | null>(null);
@@ -98,7 +108,7 @@ export default function RecogidaMaestraPage() {
       const hoy = new Date().toISOString().split("T")[0];
       const [{ data: recs }, { data: nots }] = await Promise.all([
         supabase
-          .from("recogidas_qr")
+          .from("plan_recogida")
           .select("*")
           .in("alumno_id", alumnoIds)
           .gte("created_at", hoy + "T00:00:00")
@@ -110,23 +120,36 @@ export default function RecogidaMaestraPage() {
           .gte("recogido_at", hoy + "T00:00:00")
           .order("recogido_at", { ascending: false }),
       ]);
-      setRecogidas(recs ?? []);
+      setPlanRecogidas(recs ?? []);
       setNotifs(nots ?? []);
+
+      // Si el modal del QR está abierto, actualizamos sus datos en vivo
+      if (qrModal) {
+        const actualizado = (recs ?? []).find(
+          (r) => r.id === qrModal.recogida.id,
+        );
+        if (actualizado) {
+          setQrModal((prev) =>
+            prev ? { ...prev, recogida: actualizado } : null,
+          );
+        }
+      }
     },
-    [alumnos],
+    [alumnos, qrModal],
   );
 
   useEffect(() => {
     cargarBase();
   }, [cargarBase]);
 
+  // ESCUCHA EN TIEMPO REAL (REALTIME) DE TU NUEVA TABLA PLAN_RECOGIDA
   useEffect(() => {
     if (alumnos.length === 0) return;
     const ch = supabase
-      .channel("recogidas-curso-" + cursoId)
+      .channel("plan-recogida-curso-" + cursoId)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "recogidas_qr" },
+        { event: "*", schema: "public", table: "plan_recogida" },
         () => cargarEstado(),
       )
       .on(
@@ -145,21 +168,30 @@ export default function RecogidaMaestraPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
+    // Desactivamos cualquier plan previo activo de este alumno
     await supabase
-      .from("recogidas_qr")
+      .from("plan_recogida")
       .update({ activo: false })
       .eq("alumno_id", alumno.id)
       .eq("activo", true);
+
+    // Insertamos el nuevo plan con token único y estado inicial 'pendiente'
+    const tokenUnico =
+      Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
     const { data: nueva } = await supabase
-      .from("recogidas_qr")
+      .from("plan_recogida")
       .insert({
         alumno_id: alumno.id,
         maestra_id: user?.id,
+        token: tokenUnico,
         activo: true,
+        estado_aprobacion: "pendiente",
         expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
       })
       .select("*")
       .single();
+
     setGenerando(null);
     setSeleccionado(null);
     await cargarEstado();
@@ -168,22 +200,14 @@ export default function RecogidaMaestraPage() {
 
   async function registrarEntregaDirecta(
     alumno: Alumno,
-    tipo: "padre" | "madre" | "tutor",
-    tutor?: Tutor,
+    tipo: "padre" | "madre" | "tutor" | "qr",
+    nombreEspecifico?: string,
+    relacionEspecifica?: string,
   ) {
     setRegistrando(true);
-    const nombre = tutor?.full_name ?? `${tipo} de ${alumno.nombre}`;
-    const relacion = tutor?.relacion ?? tipo;
-    const optimista: Notificacion = {
-      id: "temp-" + Date.now(),
-      alumno_id: alumno.id,
-      nombre_recogedor: nombre,
-      tipo_entrega: tipo,
-      relacion: relacion,
-      recogido_at: new Date().toISOString(),
-    };
-    setNotifs((prev) => [optimista, ...prev]);
-    setSeleccionado(null);
+    const nombre = nombreEspecifico ?? `${tipo} de ${alumno.nombre}`;
+    const relacion = relacionEspecifica ?? tipo;
+
     await supabase.from("notificaciones_recogida").insert({
       alumno_id: alumno.id,
       nombre_recogedor: nombre,
@@ -191,6 +215,16 @@ export default function RecogidaMaestraPage() {
       relacion: relacion,
       recogido_at: new Date().toISOString(),
     });
+
+    // Si se concreta por QR, apagamos el plan_recogida ya consumido
+    if (tipo === "qr" && qrModal) {
+      await supabase
+        .from("plan_recogida")
+        .update({ activo: false })
+        .eq("id", qrModal.recogida.id);
+      setQrModal(null);
+    }
+
     setRegistrando(false);
     await cargarEstado();
   }
@@ -198,7 +232,7 @@ export default function RecogidaMaestraPage() {
   const getEntregaHoy = (alumnoId: string) =>
     notifs.find((n) => n.alumno_id === alumnoId);
   const getRecogidaActiva = (alumnoId: string) =>
-    recogidas.find(
+    planRecogidas.find(
       (r) => r.alumno_id === alumnoId && r.activo && !r.escaneado_at,
     );
   const getTutoresDe = (alumnoId: string) =>
@@ -221,7 +255,6 @@ export default function RecogidaMaestraPage() {
       return `${a.nombre} ${a.apellido}`.toLowerCase().includes(q);
     });
 
-  // ── Componente de opciones de entrega (reutilizado en panel desktop y modal móvil) ──
   function OpcionesEntrega({ alumno }: { alumno: Alumno }) {
     const tutoresAlumno = getTutoresDe(alumno.id);
     const padre = tutoresAlumno.find(
@@ -238,12 +271,18 @@ export default function RecogidaMaestraPage() {
 
     return (
       <div className="space-y-2">
-        {/* Padre */}
         {padre ? (
           <button
-            onClick={() => registrarEntregaDirecta(alumno, "padre", padre)}
+            onClick={() =>
+              registrarEntregaDirecta(
+                alumno,
+                "padre",
+                padre.full_name,
+                padre.relacion,
+              )
+            }
             disabled={registrando}
-            className="w-full bg-sky-50 hover:bg-sky-100 border border-sky-100 rounded-2xl p-4 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 text-left"
+            className="w-full bg-sky-50 hover:bg-sky-100 border border-sky-100 rounded-2xl p-4 flex items-center gap-3 transition-all text-left"
           >
             <div className="w-11 h-11 bg-sky-500 rounded-xl flex items-center justify-center shrink-0 overflow-hidden">
               {padre.foto_url ? (
@@ -279,12 +318,19 @@ export default function RecogidaMaestraPage() {
             </div>
           </div>
         )}
-        {/* Madre */}
+
         {madre ? (
           <button
-            onClick={() => registrarEntregaDirecta(alumno, "madre", madre)}
+            onClick={() =>
+              registrarEntregaDirecta(
+                alumno,
+                "madre",
+                madre.full_name,
+                madre.relacion,
+              )
+            }
             disabled={registrando}
-            className="w-full bg-pink-50 hover:bg-pink-100 border border-pink-100 rounded-2xl p-4 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 text-left"
+            className="w-full bg-pink-50 hover:bg-pink-100 border border-pink-100 rounded-2xl p-4 flex items-center gap-3 transition-all text-left"
           >
             <div className="w-11 h-11 bg-pink-500 rounded-xl flex items-center justify-center shrink-0 overflow-hidden">
               {madre.foto_url ? (
@@ -320,12 +366,19 @@ export default function RecogidaMaestraPage() {
             </div>
           </div>
         )}
-        {/* Tutor */}
+
         {tutor && (
           <button
-            onClick={() => registrarEntregaDirecta(alumno, "tutor", tutor)}
+            onClick={() =>
+              registrarEntregaDirecta(
+                alumno,
+                "tutor",
+                tutor.full_name,
+                tutor.relacion,
+              )
+            }
             disabled={registrando}
-            className="w-full bg-violet-50 hover:bg-violet-100 border border-violet-100 rounded-2xl p-4 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 text-left"
+            className="w-full bg-violet-50 hover:bg-violet-100 border border-violet-100 rounded-2xl p-4 flex items-center gap-3 transition-all text-left"
           >
             <div className="w-11 h-11 bg-violet-500 rounded-xl flex items-center justify-center shrink-0 overflow-hidden">
               {tutor.foto_url ? (
@@ -349,6 +402,7 @@ export default function RecogidaMaestraPage() {
             <ChevronRight size={16} className="text-violet-500" />
           </button>
         )}
+
         <div className="flex items-center gap-3 py-2">
           <div className="flex-1 h-px bg-gray-100" />
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
@@ -356,10 +410,11 @@ export default function RecogidaMaestraPage() {
           </p>
           <div className="flex-1 h-px bg-gray-100" />
         </div>
+
         <button
           onClick={() => generarQR(alumno)}
           disabled={generando === alumno.id}
-          className="w-full bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-2xl p-4 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 text-left shadow-sm shadow-orange-200"
+          className="w-full bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-2xl p-4 flex items-center gap-3 transition-all shadow-sm shadow-orange-200"
         >
           <div className="w-11 h-11 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
             {generando === alumno.id ? (
@@ -373,25 +428,22 @@ export default function RecogidaMaestraPage() {
               Autorizado externo
             </p>
             <p className="font-black text-white text-sm">
-              Generar QR con rastreo GPS
+              Generar QR con Candado GPS
             </p>
           </div>
           <ChevronRight size={16} className="text-white" />
         </button>
-        <p className="text-[10px] text-gray-400 text-center mt-2 font-medium leading-relaxed">
-          El QR es para tíos, abuelos, vecinos u otros autorizados. El padre ve
-          la ubicación en tiempo real.
-        </p>
       </div>
     );
   }
 
   return (
     <main className="min-w-0 font-nunito">
+      {/* BARRA SUPERIOR */}
       <div className="bg-white border-b border-gray-100 px-4 lg:px-7 py-3.5 flex items-center gap-3 sticky top-0 z-30">
         <Link
           href={`/dashboard/maestra/curso/${cursoId}`}
-          className="w-9 h-9 bg-gray-50 hover:bg-gray-100 rounded-xl flex items-center justify-center transition-all shrink-0"
+          className="w-9 h-9 bg-gray-50 hover:bg-gray-100 rounded-xl flex items-center justify-center shrink-0"
         >
           <ArrowLeft size={18} className="text-gray-600" />
         </Link>
@@ -404,29 +456,23 @@ export default function RecogidaMaestraPage() {
           </h1>
         </div>
         <div
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-black ${
-            entregados === total && total > 0
-              ? "bg-green-100 text-green-700"
-              : "bg-orange-100 text-orange-700"
-          }`}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-black ${entregados === total && total > 0 ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}
         >
-          <CheckCircle2 size={12} />
-          {entregados}/{total}
+          <CheckCircle2 size={12} /> {entregados}/{total}
         </div>
       </div>
 
       <div className="px-4 lg:px-7 pt-5 pb-8 max-w-6xl mx-auto">
-        {/* Layout: lista (izq) + panel opciones (der) en desktop */}
         <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:items-start">
-          {/* COLUMNA IZQUIERDA — lista */}
+          {/* COLUMNA LISTA ALUMNOS */}
           <div className="lg:col-span-2">
             <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 mb-4 flex items-center gap-3">
               <div className="w-9 h-9 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
                 <LogOut size={17} className="text-orange-500" />
               </div>
               <p className="text-sm font-bold text-orange-700 leading-relaxed">
-                Tocá un niño para registrar quién lo recoge. Familiar conocido =
-                un tap. Otra persona = QR con GPS.
+                Familiar conocido = un tap. Externo = Generar QR. El menor no
+                saldrá hasta que el papá presione "Autorizar".
               </p>
             </div>
 
@@ -440,324 +486,288 @@ export default function RecogidaMaestraPage() {
                 placeholder="Buscar alumno por nombre..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                className="w-full bg-white border border-gray-200 rounded-2xl pl-10 pr-10 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-300 transition-all"
+                className="w-full bg-white border border-gray-200 rounded-2xl pl-10 pr-10 py-3 text-sm font-medium outline-none"
               />
               {busqueda && (
                 <button
                   onClick={() => setBusqueda("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-all"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-gray-100 rounded-lg flex items-center justify-center"
                 >
-                  <X size={13} className="text-gray-500" />
+                  <X size={13} />
                 </button>
               )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {alumnosFiltrados.length === 0 ? (
-                <div className="col-span-full py-12 text-center">
-                  <p className="text-gray-400 font-bold text-sm">
-                    {busqueda
-                      ? `Sin resultados para "${busqueda}"`
-                      : "No hay alumnos"}
-                  </p>
-                </div>
-              ) : (
-                alumnosFiltrados.map((alumno, idx) => {
-                  const entrega = getEntregaHoy(alumno.id);
-                  const recogida = getRecogidaActiva(alumno.id);
-                  const yaEntregado = !!entrega;
-                  const tieneQRActivo = !!recogida && !entrega;
-                  const estaSeleccionado = seleccionado?.id === alumno.id;
-                  const COLORS = [
-                    "from-orange-100 to-orange-200 text-orange-500",
-                    "from-violet-100 to-violet-200 text-violet-500",
-                    "from-sky-100 to-sky-200 text-sky-500",
-                    "from-emerald-100 to-emerald-200 text-emerald-500",
-                  ];
-                  const c = COLORS[idx % COLORS.length].split(" ");
+              {alumnosFiltrados.map((alumno, idx) => {
+                const entrega = getEntregaHoy(alumno.id);
+                const planActivo = planRecogidas.find(
+                  (r) => r.alumno_id === alumno.id && r.activo,
+                );
+                const yaEntregado = !!entrega;
+                const estaSeleccionado = seleccionado?.id === alumno.id;
+                const COLORS = [
+                  "from-orange-100 to-orange-200 text-orange-500",
+                  "from-violet-100 to-violet-200 text-violet-500",
+                  "from-sky-100 to-sky-200 text-sky-500",
+                ];
+                const c = COLORS[idx % COLORS.length].split(" ");
 
-                  return (
+                return (
+                  <div
+                    key={alumno.id}
+                    className={`bg-white rounded-2xl border overflow-hidden transition-all ${estaSeleccionado ? "border-orange-400 ring-2 ring-orange-200" : yaEntregado ? "border-green-200" : "border-gray-100"}`}
+                  >
                     <div
-                      key={alumno.id}
-                      className={`bg-white rounded-2xl border overflow-hidden transition-all ${
-                        estaSeleccionado
-                          ? "border-orange-400 ring-2 ring-orange-200"
-                          : yaEntregado
-                            ? "border-green-200"
-                            : "border-gray-100"
-                      }`}
-                    >
+                      className={`h-1 ${yaEntregado ? "bg-green-400" : planActivo ? "bg-orange-400" : "bg-gray-100"}`}
+                    />
+                    <div className="flex items-center gap-3 p-4">
                       <div
-                        className={`h-1 ${yaEntregado ? "bg-green-400" : tieneQRActivo ? "bg-orange-400" : "bg-gray-100"}`}
-                      />
-                      <div className="flex items-center gap-3 p-4">
-                        <div
-                          className={`w-11 h-11 bg-gradient-to-br ${c[0]} ${c[1]} rounded-xl flex items-center justify-center shrink-0 overflow-hidden`}
-                        >
-                          {alumno.foto_url ? (
-                            <img
-                              src={alumno.foto_url}
-                              alt=""
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <span className={`font-black text-sm ${c[2]}`}>
-                              {alumno.nombre[0]}
-                              {alumno.apellido[0]}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-black text-gray-900 text-sm">
-                            {alumno.nombre} {alumno.apellido}
-                          </p>
-                          {yaEntregado ? (
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <CheckCircle2
-                                size={11}
-                                className="text-green-500 shrink-0"
-                              />
-                              <p className="text-xs text-green-600 font-bold truncate">
-                                Entregado a {entrega?.nombre_recogedor}
-                              </p>
-                            </div>
-                          ) : tieneQRActivo ? (
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <QrCode
-                                size={11}
-                                className="text-orange-400 shrink-0"
-                              />
-                              <p className="text-xs text-orange-500 font-bold">
-                                QR activo
-                              </p>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-gray-400 font-medium mt-0.5">
-                              Pendiente
-                            </p>
-                          )}
-                        </div>
-                        {yaEntregado ? (
-                          <div className="w-9 h-9 bg-green-100 rounded-xl flex items-center justify-center shrink-0">
-                            <CheckCircle2
-                              size={16}
-                              className="text-green-500"
-                            />
-                          </div>
-                        ) : tieneQRActivo ? (
-                          <button
-                            onClick={() =>
-                              setQrModal({ alumno, recogida: recogida! })
-                            }
-                            className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-black px-3 py-2 rounded-xl transition-all active:scale-95 shrink-0"
-                          >
-                            <QrCode size={14} /> Ver QR
-                          </button>
+                        className={`w-11 h-11 bg-gradient-to-br ${c[0]} ${c[1]} rounded-xl flex items-center justify-center overflow-hidden shrink-0`}
+                      >
+                        {alumno.foto_url ? (
+                          <img
+                            src={alumno.foto_url}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
                         ) : (
-                          <button
-                            onClick={() =>
-                              setSeleccionado(estaSeleccionado ? null : alumno)
-                            }
-                            className={`flex items-center gap-1.5 text-xs font-black px-3 py-2 rounded-xl transition-all active:scale-95 shrink-0 ${
-                              estaSeleccionado
-                                ? "bg-orange-500 text-white"
-                                : "bg-gray-900 hover:bg-orange-600 text-white"
-                            }`}
-                          >
-                            Entregar <ChevronRight size={14} />
-                          </button>
+                          <span className={`font-black text-sm ${c[2]}`}>
+                            {alumno.nombre[0]}
+                          </span>
                         )}
                       </div>
-                      {yaEntregado && entrega && (
-                        <div className="px-4 pb-3">
-                          <div className="bg-green-50 rounded-xl px-3 py-2 flex items-center gap-2">
-                            <Clock
-                              size={11}
-                              className="text-green-500 shrink-0"
-                            />
-                            <p className="text-[11px] text-green-700 font-bold capitalize">
-                              {entrega.tipo_entrega === "qr"
-                                ? "Por QR (externo)"
-                                : entrega.relacion}
-                            </p>
-                            <span className="text-[10px] text-green-500 font-black ml-auto shrink-0">
-                              {new Date(entrega.recogido_at).toLocaleTimeString(
-                                "es-BO",
-                                { hour: "2-digit", minute: "2-digit" },
-                              )}
-                            </span>
-                          </div>
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-gray-900 text-sm">
+                          {alumno.nombre} {alumno.apellido}
+                        </p>
+                        {yaEntregado ? (
+                          <p className="text-xs text-green-600 font-bold truncate">
+                            ✓ Retirado por {entrega?.nombre_recogedor}
+                          </p>
+                        ) : planActivo ? (
+                          <p className="text-xs text-orange-500 font-bold capitalize">
+                            ⚠️ QR:{" "}
+                            {planActivo.estado_aprobacion.replace("_", " ")}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-gray-400 font-medium">
+                            En Aula
+                          </p>
+                        )}
+                      </div>
+
+                      {yaEntregado ? (
+                        <CheckCircle2 size={16} className="text-green-500" />
+                      ) : planActivo ? (
+                        <button
+                          onClick={() =>
+                            setQrModal({ alumno, recogida: planActivo })
+                          }
+                          className="bg-orange-500 text-white text-xs font-black px-3 py-2 rounded-xl"
+                        >
+                          Ver Estado
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() =>
+                            setSeleccionado(estaSeleccionado ? null : alumno)
+                          }
+                          className="bg-gray-900 text-white text-xs font-black px-3 py-2 rounded-xl"
+                        >
+                          Entregar
+                        </button>
                       )}
                     </div>
-                  );
-                })
-              )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* COLUMNA DERECHA — panel de opciones (solo desktop) */}
-          <div className="hidden lg:block lg:col-span-1 lg:sticky lg:top-24">
+          {/* OPCIONES LATERALES DESKTOP */}
+          <div className="hidden lg:block lg:col-span-1">
             {seleccionado ? (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="flex items-center gap-3 px-5 pt-4 pb-4 border-b border-gray-100">
-                  <div className="w-11 h-11 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center shrink-0 overflow-hidden">
-                    {seleccionado.foto_url ? (
-                      <img
-                        src={seleccionado.foto_url}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-white font-black">
-                        {seleccionado.nombre[0]}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                      Entregar a
-                    </p>
-                    <h2 className="font-black text-gray-900 text-base truncate">
-                      {seleccionado.nombre} {seleccionado.apellido}
-                    </h2>
-                  </div>
-                  <button
-                    onClick={() => setSeleccionado(null)}
-                    className="w-8 h-8 bg-gray-100 rounded-xl flex items-center justify-center"
-                  >
-                    <X size={16} className="text-gray-500" />
-                  </button>
-                </div>
-                <div className="p-4">
-                  <OpcionesEntrega alumno={seleccionado} />
-                </div>
+              <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                <h2 className="font-black text-gray-900 text-sm mb-3">
+                  Opciones para {seleccionado.nombre}
+                </h2>
+                <OpcionesEntrega alumno={seleccionado} />
               </div>
             ) : (
-              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center">
-                <div className="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <MousePointerClick size={24} className="text-orange-300" />
-                </div>
-                <p className="font-black text-gray-700 text-sm mb-1">
-                  Seleccioná un niño
-                </p>
-                <p className="text-gray-400 text-xs leading-relaxed">
-                  Tocá "Entregar" en cualquier alumno para ver las opciones de
-                  recogida aquí
-                </p>
+              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center text-gray-400">
+                <MousePointerClick
+                  size={24}
+                  className="mx-auto mb-2 text-orange-300"
+                />
+                <p className="font-bold text-xs">Seleccioná un alumno</p>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* MODAL ENTREGA — solo móvil */}
-      {seleccionado && (
-        <div className="lg:hidden fixed inset-0 z-50 flex items-end justify-center">
-          <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setSeleccionado(null)}
-          />
-          <div className="relative bg-white w-full rounded-t-3xl shadow-2xl flex flex-col max-h-[90dvh]">
-            <div className="flex justify-center pt-3 pb-1 shrink-0">
-              <div className="w-10 h-1 bg-gray-200 rounded-full" />
-            </div>
-            <div className="flex items-center gap-3 px-5 pt-3 pb-4 border-b border-gray-100">
-              <div className="w-11 h-11 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center shrink-0 overflow-hidden">
-                {seleccionado.foto_url ? (
-                  <img
-                    src={seleccionado.foto_url}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-white font-black">
-                    {seleccionado.nombre[0]}
-                  </span>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                  Entregar a
-                </p>
-                <h2 className="font-black text-gray-900 text-base truncate">
-                  {seleccionado.nombre} {seleccionado.apellido}
-                </h2>
-              </div>
-              <button
-                onClick={() => setSeleccionado(null)}
-                className="w-8 h-8 bg-gray-100 rounded-xl flex items-center justify-center"
-              >
-                <X size={16} className="text-gray-500" />
-              </button>
-            </div>
-            <div className="overflow-y-auto p-4 flex-1">
-              <OpcionesEntrega alumno={seleccionado} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL QR */}
+      {/* 🚨 MODAL DEL QR CON VERIFICACIÓN Y CANDADO DE SEGURIDAD EN VIVO */}
       {qrModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-5 text-white">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-orange-100 text-xs font-bold uppercase tracking-widest">
-                  Escanear para recoger
-                </p>
-                <button
-                  onClick={() => setQrModal(null)}
-                  className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center"
-                >
-                  <X size={14} className="text-white" />
-                </button>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
-                  {qrModal.alumno.foto_url ? (
-                    <img
-                      src={qrModal.alumno.foto_url}
-                      alt=""
-                      className="w-full h-full object-cover"
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-orange-50">
+            {/* ESTADO 1: PENDIENTE (Nadie ha escaneado aún) */}
+            {qrModal.recogida.estado_aprobacion === "pendiente" && (
+              <>
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-5 text-white flex justify-between items-center">
+                  <div>
+                    <p className="text-orange-100 text-[9px] font-black uppercase tracking-widest">
+                      Escanear en la puerta
+                    </p>
+                    <h3 className="font-black text-base">
+                      {qrModal.alumno.nombre} {qrModal.alumno.apellido}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setQrModal(null)}
+                    className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div className="p-6 flex flex-col items-center text-center">
+                  <div className="bg-white p-4 rounded-2xl border-4 border-orange-100 mb-4">
+                    <QRCode
+                      value={`${typeof window !== "undefined" ? window.location.origin : ""}/recogida/${qrModal.recogida.token}`}
+                      size={180}
                     />
-                  ) : (
-                    <span className="text-white font-black text-xl">
-                      {qrModal.alumno.nombre[0]}
-                    </span>
-                  )}
+                  </div>
+                  <p className="text-xs text-gray-500 font-bold">
+                    Esperando que el recolector escanee el código...
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-1 leading-normal">
+                    Al escanear, el tercero iniciará sesión con Google y le
+                    mandará su perfil y GPS al papá.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* ESTADO 2: ESPERANDO APROBACIÓN (Escaneó y se le mandó alerta al papá) */}
+            {qrModal.recogida.estado_aprobacion === "esperando_aprobacion" && (
+              <div className="p-6 flex flex-col items-center text-center space-y-4">
+                <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center border border-amber-100 animate-pulse">
+                  <Clock size={24} />
                 </div>
                 <div>
-                  <p className="font-black text-lg leading-tight">
-                    {qrModal.alumno.nombre} {qrModal.alumno.apellido}
-                  </p>
-                  <p className="text-orange-100 text-xs">Válido 2 horas</p>
+                  <span className="bg-amber-100 text-amber-700 font-black text-[9px] px-2 py-0.5 rounded-md uppercase tracking-wider">
+                    Verificando en vivo
+                  </span>
+                  <h3 className="font-black text-sm text-gray-800 mt-2">
+                    ¡QR Escaneado por Tercero!
+                  </h3>
+                  <div className="bg-gray-50 border border-gray-100 p-3 rounded-xl mt-3 text-left space-y-1">
+                    <p className="text-gray-500 font-bold text-[10px]">
+                      Identidad de Google Detectada:
+                    </p>
+                    <p className="text-gray-900 font-black text-xs">
+                      {qrModal.recogida.recolector_nombre}
+                    </p>
+                    <p className="text-gray-400 font-mono text-[9px] truncate">
+                      {qrModal.recogida.recolector_email}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-amber-600 font-bold text-[11px] bg-amber-50/50 p-2.5 rounded-xl border border-amber-100/50">
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>
+                    Esperando que el Papá presione "Autorizar" en su celular...
+                  </span>
                 </div>
               </div>
-            </div>
-            <div className="p-6 flex flex-col items-center">
-              <div className="bg-white p-4 rounded-2xl border-4 border-orange-100 mb-4">
-                <QRCode
-                  value={`${typeof window !== "undefined" ? window.location.origin : ""}/recogida/${qrModal.recogida.token}`}
-                  size={200}
-                  style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                />
+            )}
+
+            {/* ESTADO 3: APROBADO (El papá dio el visto bueno, control físico docente) */}
+            {qrModal.recogida.estado_aprobacion === "aprobado" && (
+              <div className="p-6 flex flex-col items-center text-center space-y-4 bg-emerald-50/10">
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center border border-emerald-100">
+                  <ShieldCheck size={26} />
+                </div>
+                <div>
+                  <span className="bg-emerald-500 text-white font-black text-[9px] px-2.5 py-0.5 rounded-md uppercase tracking-wider">
+                    ✓ AUTORIZADO POR EL TUTOR
+                  </span>
+                  <h3 className="font-black text-base text-gray-900 mt-2">
+                    ¡Permiso Concedido!
+                  </h3>
+                  <p className="text-gray-500 text-[11px] mt-1">
+                    El papá autorizó la entrega explícitamente a:
+                  </p>
+
+                  <div className="bg-white border border-emerald-100 p-3 rounded-xl mt-3 text-left shadow-xs">
+                    <p className="text-[10px] text-gray-400 font-bold">
+                      Recolector Oficial:
+                    </p>
+                    <p className="text-gray-800 font-black text-xs uppercase">
+                      {qrModal.recogida.recolector_nombre}
+                    </p>
+                    <p className="text-gray-400 font-mono text-[9px] mt-0.5">
+                      {qrModal.recogida.recolector_email}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 p-3 rounded-xl text-left text-[10px] font-bold leading-normal">
+                  📢 **Control Docente Exigido:** Pide el documento físico de
+                  identidad (CI) de la persona y confirma que se llame **
+                  {qrModal.recogida.recolector_nombre}** antes de soltar al
+                  niño.
+                </div>
+
+                <button
+                  onClick={() =>
+                    registrarEntregaDirecta(
+                      qrModal.alumno,
+                      "qr",
+                      qrModal.recogida.recolector_nombre || undefined,
+                      "Autorizado por QR",
+                    )
+                  }
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-black uppercase text-xs tracking-wider transition-all shadow-md"
+                >
+                  Confirmar Entrega y Activar GPS
+                </button>
               </div>
-              <p className="text-xs text-gray-400 font-medium text-center leading-relaxed">
-                El autorizado escanea, inicia sesión con Google y compartirá su
-                ubicación durante el trayecto.
-              </p>
-              <button
-                onClick={() => {
-                  setQrModal(null);
-                  generarQR(qrModal.alumno);
-                }}
-                className="flex items-center gap-2 text-xs font-bold text-gray-400 hover:text-orange-500 transition-colors mt-3"
-              >
-                <RefreshCw size={12} /> Generar nuevo QR
-              </button>
-            </div>
+            )}
+
+            {/* ESTADO 4: RECHAZADO (El papá bloqueó el retiro) */}
+            {qrModal.recogida.estado_aprobacion === "rechazado" && (
+              <div className="p-6 flex flex-col items-center text-center space-y-4 bg-red-50/20">
+                <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center border border-red-100">
+                  <ShieldAlert size={26} />
+                </div>
+                <div>
+                  <span className="bg-red-600 text-white font-black text-[9px] px-2.5 py-0.5 rounded-md uppercase tracking-wider">
+                    🛑 ACCESO BLOQUEADO
+                  </span>
+                  <h3 className="font-black text-base text-gray-900 mt-2">
+                    Entrega Denegada
+                  </h3>
+                  <p className="text-gray-500 text-[11px] mt-1">
+                    El papá rechazó la solicitud de recogida para esta persona:
+                  </p>
+                  <p className="text-red-600 font-black text-xs mt-2 uppercase">
+                    {qrModal.recogida.recolector_nombre}
+                  </p>
+                </div>
+                <div className="bg-red-50 border border-red-100 text-red-800 p-3 rounded-xl text-xs font-bold leading-normal">
+                  ⚠️ **ALERTA:** No entregues al niño bajo ninguna
+                  circunstancia. El tutor ha cancelado el permiso desde su
+                  sesión.
+                </div>
+                <button
+                  onClick={() => setQrModal(null)}
+                  className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl font-bold uppercase transition-all"
+                >
+                  Cerrar Alerta
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1,9 +1,8 @@
-"use client"; // Indica a Next.js que este componente se renderiza e interactúa en el navegador del usuario
+"use client";
 
 import { useState, useEffect } from "react";
-// Importamos la acción de servidor que hace la consulta a Supabase y calcula la matemática OLS
-import { analizarMultiplesRegresiones } from "@/app/actions/regresiones";
-// Componentes modulares de Recharts para construir gráficos de líneas vectoriales (SVG) responsivos
+import { useParams } from "next/navigation"; // <-- Importamos useParams para leer la carpeta [id]
+import { analizarMultiplesRegresiones } from "./regresiones"; // Tu archivo con las fórmulas vecino
 import {
   LineChart,
   Line,
@@ -15,57 +14,58 @@ import {
 } from "recharts";
 
 export default function DashboardMaestras() {
-  // Estados locales para controlar el spinner de carga y almacenar los resultados procesados
+  const params = useParams(); // <-- Captura el ID de la URL automáticamente
+  const cursoId = params?.id as string; // Saca el ID del curso activo
+
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Función asíncrona encargada de solicitar los datos de los modelos predictivos al servidor
   const cargarAnalisis = async () => {
-    setLoading(true); // Encendemos el estado de carga para mostrar el spinner visual
-    const res = await analizarMultiplesRegresiones(); // Invocación del Server Action
+    if (!cursoId) return;
+    setLoading(true);
+    setErrorMsg(null);
+
+    // Le pasamos el ID del curso que leímos desde la barra de direcciones de la maestra
+    const res = await analizarMultiplesRegresiones(cursoId);
+
     if (res.success) {
-      // Si la base de datos respondió bien, proyectamos la ecuación matemática en arrays numéricos
       const modelosConGraficos = mapearDatosParaGraficos(res.modelos);
-      // Guardamos en el estado el objeto final manteniendo el total de registros y los nuevos puntos de tendencia
       setData({ ...res, modelos: modelosConGraficos });
+    } else {
+      setErrorMsg(res.error || "Ocurrió un error al procesar las regresiones");
     }
-    setLoading(false); // Apagamos el estado de carga
+    setLoading(false);
   };
 
-  // useEffect con array de dependencias vacío: se ejecuta una única vez cuando la página monta en el navegador
+  // Hacemos que se cargue cada vez que el cursoID esté disponible en la URL
   useEffect(() => {
-    cargarAnalisis();
-  }, []);
+    if (cursoId) {
+      cargarAnalisis();
+    }
+  }, [cursoId]);
 
-  // Función clave: Traduce las ecuaciones estáticas (y = mx + b) en puntos de coordenadas legibles por Recharts
   const mapearDatosParaGraficos = (modelos: any) => {
-    // Eje X: Etiquetas para mapear variables temporales de lunes a viernes
     const diasLabels = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
-    // MODELO 1: Evalúa el impacto del tiempo en el estado de ánimo (X = Día de la semana de 1 a 5)
     modelos.diaAnimo.datosGrafico = diasLabels.map((dia, idx) => ({
-      name: dia, // Etiqueta del eje X
-      // Aplicación matemática directa: y = m * x + b (idx + 1 mapea Lunes=1, Martes=2...)
-      // El operador '+' inicial parsea el String del '.toFixed(2)' de nuevo a un Number decimal limpio
+      name: dia,
       "Estado Esperado": +(
         modelos.diaAnimo.m * (idx + 1) +
         modelos.diaAnimo.b
       ).toFixed(2),
     }));
 
-    // MODELO 2: Evalúa el impacto de la alimentación en el ánimo (Variable categórica binaria)
     modelos.comioAnimo.datosGrafico = [
       {
-        name: "Dejó la comida", // Escenario X = 0 (Falso)
-        // Evaluamos la ecuación con x = 0, lo que anula la pendiente y nos da exactamente la intersección 'b'
+        name: "Dejó la comida",
         "Ánimo Promedio": +(
           modelos.comioAnimo.m * 0 +
           modelos.comioAnimo.b
         ).toFixed(2),
       },
       {
-        name: "Comió todo", // Escenario X = 1 (Verdadero)
-        // Evaluamos la ecuación con x = 1 para ver cuánto altera el ánimo el hecho de que termine sus alimentos
+        name: "Comió todo",
         "Ánimo Promedio": +(
           modelos.comioAnimo.m * 1 +
           modelos.comioAnimo.b
@@ -73,25 +73,21 @@ export default function DashboardMaestras() {
       },
     ];
 
-    // MODELO 3: Evalúa la tendencia del apetito según el día de la semana (X = 1 a 5)
     modelos.diaComio.datosGrafico = diasLabels.map((dia, idx) => ({
-      name: dia, // Etiqueta del eje X
-      // Evaluamos y = m * x + b. Al ser una tasa entre 0 y 1, multiplicamos por 100 para expresarlo como porcentaje
-      // .toFixed(0) remueve los decimales redundantes para una lectura directa y limpia para la maestra
+      name: dia,
       "Apetito (%)": +(
         (modelos.diaComio.m * (idx + 1) + modelos.diaComio.b) *
         100
       ).toFixed(0),
     }));
 
-    return modelos; // Retornamos las estructuras mutadas con sus respectivos arreglos de puntos listos
+    return modelos;
   };
+
   return (
     <div className="min-h-screen bg-orange-50/20">
-      {/* ================= HEADER PRINCIPAL COMPLETADO ================= */}
       <header className="bg-white border-b border-orange-100 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          {/* Logo / Título del Kinder */}
           <div className="flex items-center space-x-3">
             <div className="bg-orange-500 text-white p-2.5 rounded-xl shadow-md shadow-orange-500/20">
               <svg
@@ -116,7 +112,7 @@ export default function DashboardMaestras() {
             </div>
             <div>
               <span className="text-xs uppercase font-black tracking-wider text-orange-400 block">
-                Regresiones Lineales
+                Regresiones de Mi Aula
               </span>
               <h1 className="text-xl font-black text-gray-800 tracking-tight">
                 KínderApp
@@ -124,11 +120,7 @@ export default function DashboardMaestras() {
             </div>
           </div>
 
-          {/* Acciones del Header */}
           <div className="flex items-center space-x-4">
-            <span className="hidden md:inline-flex items-center text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-200">
-              Profesorado / Panel de Tendencias
-            </span>
             <button
               onClick={cargarAnalisis}
               disabled={loading}
@@ -139,36 +131,36 @@ export default function DashboardMaestras() {
           </div>
         </div>
       </header>
-      {/* =============================================================== */}
 
-      {/* Contenido Principal */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Banner de bienvenida y subtexto */}
         <div className="mb-8 bg-gradient-to-r from-orange-500 to-amber-500 rounded-3xl p-6 md:p-8 text-white shadow-xl shadow-orange-500/10">
           <h2 className="text-2xl md:text-3xl font-black tracking-tight">
             ¡Hola, Maestra! 👋
           </h2>
           <p className="text-orange-50 mt-2 text-sm md:text-base max-w-2xl leading-relaxed">
-            Aquí puedes visualizar de forma sencilla cómo influyen las rutinas
-            diarias en el humor y el apetito de tus alumnos. Datos calculados
-            sobre{" "}
+            Aquí tienes las tendencias exclusivas calculadas sobre las{" "}
             <span className="underline decoration-2 font-bold">
               {data?.total || 0} bitácoras
             </span>{" "}
-            guardadas.
+            registradas para tu grupo asignado.
           </p>
         </div>
+
+        {errorMsg && (
+          <div className="p-4 mb-6 bg-red-50 border border-red-200 text-red-700 rounded-2xl text-sm font-medium shadow-sm">
+            ⚠️ {errorMsg}
+          </div>
+        )}
 
         {loading && (
           <div className="flex flex-col items-center justify-center h-64 space-y-4">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-orange-500"></div>
             <p className="text-sm text-gray-500 font-medium">
-              Buscando patrones en el comportamiento...
+              Extrayendo y analizando las tendencias de tu clase...
             </p>
           </div>
         )}
 
-        {/* Grid de Reportes con los Gráficos */}
         {data?.success && !loading && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {Object.entries(data.modelos).map(([key, modelo]: any) => (
@@ -178,14 +170,13 @@ export default function DashboardMaestras() {
               >
                 <div className="p-6 pb-0">
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-50 text-orange-600 border border-orange-100">
-                    Tendencia Escolar
+                    Tendencia de Mi Aula
                   </span>
                   <h3 className="text-lg font-bold text-gray-900 mt-2 leading-snug">
                     {modelo.titulo}
                   </h3>
                 </div>
 
-                {/* Gráfico */}
                 <div className="h-48 w-full px-4 pt-4">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
@@ -227,11 +218,10 @@ export default function DashboardMaestras() {
                   </ResponsiveContainer>
                 </div>
 
-                {/* Caja Informativa para la Maestra */}
                 <div className="p-6 bg-orange-50/30 border-t border-orange-100/50 mt-4 space-y-3">
                   <div className="bg-white p-4 rounded-xl border border-orange-100 shadow-sm">
                     <span className="text-[10px] uppercase font-bold tracking-wider text-orange-500 block mb-1">
-                      📢 Conclusión pedagógica:
+                      📢 Conclusión de tu aula:
                     </span>
                     <p className="text-sm text-gray-700 leading-relaxed font-semibold">
                       {modelo.interpretacion}

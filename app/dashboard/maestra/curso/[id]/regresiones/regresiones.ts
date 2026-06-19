@@ -15,10 +15,9 @@ function mapearAnimo(animo: string): number {
   }
 }
 
-// Función auxiliar para calcular OLS (Mínimos Cuadrados)
 function calcularOLS(puntos: { x: number; y: number }[]) {
   const n = puntos.length
-  if (n < 2) return { m: 0, b: 0, r2: 0, error: 'Datos insuficientes' }
+  if (n < 2) return { m: 0, b: 0, r2: 0, error: 'Datos suficientes' }
 
   let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0
   for (let i = 0; i < n; i++) {
@@ -34,7 +33,6 @@ function calcularOLS(puntos: { x: number; y: number }[]) {
   const m = (n * sumXY - sumX * sumY) / denominador
   const b = (sumY - m * sumX) / n
 
-  // R²
   const yMedia = sumY / n
   let ssTot = 0, ssRes = 0
   for (let i = 0; i < n; i++) {
@@ -47,29 +45,38 @@ function calcularOLS(puntos: { x: number; y: number }[]) {
   return { m, b, r2, success: true }
 }
 
-export async function analizarMultiplesRegresiones() {
+// Ahora la función recibe el cursoId directamente enviado desde la pantalla cliente
+export async function analizarMultiplesRegresiones(cursoId: string) {
   try {
+    if (!cursoId) throw new Error('No se especificó un identificador de curso válido')
+
+    // Jalamos las bitácoras cruzando datos relacionales con la tabla de alumnos
     const { data, error } = await supabase
       .from('bitacoras')
-      .select('fecha, estado_animo, comio')
+      .select(`
+        fecha, 
+        estado_animo, 
+        comio, 
+        alumnos ( curso_id )
+      `)
 
     if (error) throw new Error(error.message)
-    if (!data || data.length < 5) throw new Error('Registros insuficientes')
+    if (!data || data.length === 0) throw new Error('No existen registros en la base de datos')
 
-    // Formatear datos comunes
-    const dataset = data.map(row => ({
-      diaSemana: new Date(row.fecha).getDay(), // 1 a 5
-      animoNum: mapearAnimo(row.estado_animo), // 1 a 3
-      comioNum: row.comio === true ? 1 : 0    // 0 o 1
-    })).filter(p => p.diaSemana >= 1 && p.diaSemana <= 5)
+    // Formatear y filtrar el dataset usando el ID que nos mandó la URL del frontend
+    const dataset = data.map((row: any) => ({
+      diaSemana: new Date(row.fecha).getDay(),
+      animoNum: mapearAnimo(row.estado_animo),
+      comioNum: row.comio === true ? 1 : 0,
+      curso_id: row.alumnos ? row.alumnos.curso_id : null
+    })).filter(p => p.diaSemana >= 1 && p.diaSemana <= 5 && String(p.curso_id) === String(cursoId))
 
-    // 1. Regresión: Día vs Ánimo
+    if (dataset.length < 2) {
+      throw new Error(`Este curso todavía no tiene bitácoras suficientes para generar líneas de tendencia estadística.`)
+    }
+
     const modeloDiaAnimo = calcularOLS(dataset.map(p => ({ x: p.diaSemana, y: p.animoNum })))
-
-    // 2. Regresión: Comió vs Ánimo
     const modeloComioAnimo = calcularOLS(dataset.map(p => ({ x: p.comioNum, y: p.animoNum })))
-
-    // 3. Regresión: Día vs Comió
     const modeloDiaComio = calcularOLS(dataset.map(p => ({ x: p.diaSemana, y: p.comioNum })))
 
     return {
@@ -91,8 +98,8 @@ export async function analizarMultiplesRegresiones() {
           Y_label: "Estado de Ánimo (1-3)",
           ...modeloComioAnimo,
           interpretacion: modeloComioAnimo.m! > 0 
-            ? "Fuerte correlación: Los niños que terminan su comida registran mejor estado de ánimo." 
-            : "La alimentación no parece alterar el indicador de humor directamente."
+            ? "Los niños de tu aula que terminan su comida registran mejor estado de ánimo." 
+            : "La alimentación no parece alterar el indicador de humor directamente en tu grupo."
         },
         diaComio: {
           titulo: "Tendencia de Apetito durante la Semana",
@@ -100,8 +107,8 @@ export async function analizarMultiplesRegresiones() {
           Y_label: "Tasa de alimentación (0-1)",
           ...modeloDiaComio,
           interpretacion: modeloDiaComio.m! > 0 
-            ? "El apetito de los niños aumenta hacia los últimos días de la semana." 
-            : "Se registra una baja en el consumo de alimentos a medida que avanza la semana."
+            ? "El apetito de tus alumnos aumenta hacia los últimos días de la semana." 
+            : "Se registra una baja en el consumo de alimentos en tu aula a medida que avanza la semana."
         }
       }
     }
