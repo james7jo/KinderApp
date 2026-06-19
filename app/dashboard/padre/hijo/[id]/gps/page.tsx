@@ -19,6 +19,8 @@ import {
   ShieldCheck,
   ThumbsUp,
   ThumbsDown,
+  Navigation,
+  Calendar,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
@@ -31,31 +33,17 @@ const MapaRecogida = dynamic(() => import("./MapaRecogida"), {
   ),
 });
 
-type Notif = {
-  id: string;
-  nombre_recogedor: string;
-  correo_recogedor: string;
-  latitud: number | null;
-  longitud: number | null;
-  recogido_at: string;
-};
-
 type Ubicacion = { lat: number; lng: number; created_at: string };
 
-type PlanRecogidaActivo = {
+type PlanRecogidaItem = {
   id: string;
-  nombre_recogedor: string;
-  correo_recogedor: string;
   recolector_nombre: string | null;
   recolector_email: string | null;
-  estado_aprobacion:
-    | "pendiente"
-    | "esperando_aprobacion"
-    | "aprobado"
-    | "rechazado";
-  escaneado_at: string | null;
+  estado_aprobacion: string;
   activo: boolean;
-  ultimo_ping: string | null;
+  finalizado_at: string | null;
+  created_at: string;
+  recorrido_gps_historial: any;
 };
 
 export default function GpsPage() {
@@ -64,76 +52,100 @@ export default function GpsPage() {
   const supabase = createClient();
 
   const [alumnoNombre, setAlumnoNombre] = useState("");
-  const [notifs, setNotifs] = useState<Notif[]>([]);
   const [nueva, setNueva] = useState(false);
   const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([]);
-  const [recogida, setRecogida] = useState<PlanRecogidaActivo | null>(null);
+  const [recogidaActiva, setRecogidaActiva] = useState<PlanRecogidaItem | null>(
+    null,
+  );
+  const [historialPlanes, setHistorialPlanes] = useState<PlanRecogidaItem[]>(
+    [],
+  );
+  const [planSeleccionadoId, setPlanSeleccionadoId] = useState<string | null>(
+    null,
+  );
+
   const [segundosUltimoPing, setSegundosUltimoPing] = useState<number>(0);
   const [votando, setVotando] = useState(false);
 
-  // Cargar datos iniciales desde 'plan_recogida'
-  const cargar = useCallback(async () => {
-    const [{ data: alumno }, { data: notifsData }] = await Promise.all([
-      supabase.from("alumnos").select("nombre, apellido").eq("id", id).single(),
-      supabase
-        .from("notificaciones_recogida")
-        .select("*")
-        .eq("alumno_id", id)
-        .order("recogido_at", { ascending: false })
-        .limit(20),
-    ]);
-    setAlumnoNombre(`${alumno?.nombre} ${alumno?.apellido}`);
-    setNotifs(notifsData ?? []);
+  // Parseador de coordenadas JSONB a formato del Mapa
+  const parsearHistorialGps = (historialJson: any): Ubicacion[] => {
+    return Array.isArray(historialJson)
+      ? historialJson.map((p: any) => ({
+          lat: Number(p.lat),
+          lng: Number(p.lng),
+          created_at: p.time || new Date().toISOString(),
+        }))
+      : [];
+  };
 
-    const hoy = new Date().toISOString().split("T")[0];
-    const { data: rec } = await supabase
+  const cargarDatos = useCallback(async () => {
+    // 1. Cargar nombre del alumno
+    const { data: alumno } = await supabase
+      .from("alumnos")
+      .select("nombre, apellido")
+      .eq("id", id)
+      .single();
+    setAlumnoNombre(`${alumno?.nombre} ${alumno?.apellido}`);
+
+    // 2. Cargar TODOS los planes de recogida de este alumno (activos e históricos de la nueva tabla)
+    const { data: planes } = await supabase
       .from("plan_recogida")
       .select(
-        "id, token, activo, estado_aprobacion, recolector_nombre, recolector_email, escaneado_at, recorrido_gps_historial, updated_at",
+        "id, activo, estado_aprobacion, recolector_nombre, recolector_email, recorrido_gps_historial, created_at, updated_at",
       )
       .eq("alumno_id", id)
-      .eq("activo", true)
-      .gte("created_at", hoy + "T00:00:00")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order("created_at", { ascending: false });
 
-    if (rec) {
-      setRecogida({
-        id: rec.id,
-        nombre_recogedor: rec.recolector_nombre ?? "Externo por escanear",
-        correo_recogedor: rec.recolector_email ?? "",
-        recolector_nombre: rec.recolector_nombre,
-        recolector_email: rec.recolector_email,
-        estado_aprobacion: rec.estado_aprobacion as any,
-        escaneado_at: rec.escaneado_at,
-        activo: rec.activo,
-        ultimo_ping: rec.updated_at,
-      });
+    const listaPlanes: PlanRecogidaItem[] = (planes ?? []).map((p) => ({
+      id: p.id,
+      recolector_nombre: p.recolector_nombre,
+      recolector_email: p.recolector_email,
+      estado_aprobacion: p.estado_aprobacion,
+      activo: p.activo,
+      finalizado_at: p.updated_at,
+      created_at: p.created_at,
+      recorrido_gps_historial: p.recorrido_gps_historial,
+    }));
 
-      // El historial de ubicaciones lo parseamos directo desde la columna JSONB
-      const historialGps = Array.isArray(rec.recorrido_gps_historial)
-        ? rec.recorrido_gps_historial.map((p: any) => ({
-            lat: Number(p.lat),
-            lng: Number(p.lng),
-            created_at: p.time || new Date().toISOString(),
-          }))
-        : [];
-      setUbicaciones(historialGps);
+    // Separamos el plan que está activo hoy para el monitoreo inmediato
+    const activo = listaPlanes.find(
+      (p) => p.activo && p.estado_aprobacion !== "rechazado",
+    );
+    const historicos = listaPlanes.filter(
+      (p) => !p.activo && p.estado_aprobacion === "aprobado",
+    );
+
+    setHistorialPlanes(historicos);
+    setRecogidaActiva(activo ?? null);
+
+    // CONTROL DEL MAPA:
+    // Si el papá hizo clic en un registro del historial, mostramos esa ruta guardada.
+    // Si no ha hecho clic en nada, pero hay un viaje en curso activo, mostramos el viaje activo.
+    if (planSeleccionadoId) {
+      const seleccionado = listaPlanes.find((p) => p.id === planSeleccionadoId);
+      if (seleccionado) {
+        setUbicaciones(
+          parsearHistorialGps(seleccionado.recorrido_gps_historial),
+        );
+        return;
+      }
+    }
+
+    if (activo) {
+      setUbicaciones(parsearHistorialGps(activo.recorrido_gps_historial));
     } else {
-      setRecogida(null);
       setUbicaciones([]);
     }
-  }, [id]);
+  }, [id, planSeleccionadoId]);
 
   useEffect(() => {
-    cargar();
-  }, [cargar]);
+    cargarDatos();
+  }, [cargarDatos]);
 
-  // Realtime unificado escuchando 'plan_recogida' y alertas
+  // Realtime escuchando cambios en la tabla única plan_recogida
   useEffect(() => {
     const ch = supabase
-      .channel(`padre-gps-realtime-${id}`)
+      .channel(`padre-gps-realtime-v2-${id}`)
       .on(
         "postgres_changes",
         {
@@ -142,20 +154,13 @@ export default function GpsPage() {
           table: "plan_recogida",
           filter: `alumno_id=eq.${id}`,
         },
-        () => cargar(),
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notificaciones_recogida",
-          filter: `alumno_id=eq.${id}`,
-        },
-        () => {
-          setNueva(true);
-          cargar();
-          setTimeout(() => setNueva(false), 8000);
+        (payload) => {
+          // Si hay una inserción o actualización, disparamos la alerta de cambio y refrescamos
+          if (payload.eventType === "INSERT") {
+            setNueva(true);
+            setTimeout(() => setNueva(false), 8000);
+          }
+          cargarDatos();
         },
       )
       .subscribe();
@@ -163,48 +168,44 @@ export default function GpsPage() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [id, cargar]);
+  }, [id, cargarDatos]);
 
   // Contador de latencia del último ping
   useEffect(() => {
-    if (!recogida?.ultimo_ping || recogida.estado_aprobacion !== "aprobado")
+    if (
+      !recogidaActiva?.finalizado_at ||
+      recogidaActiva.estado_aprobacion !== "aprobado"
+    )
       return;
     const i = setInterval(() => {
       const s = Math.floor(
-        (Date.now() - new Date(recogida.ultimo_ping!).getTime()) / 1000,
+        (Date.now() - new Date(recogidaActiva.finalizado_at!).getTime()) / 1000,
       );
       setSegundosUltimoPing(s < 0 ? 0 : s);
     }, 1000);
     return () => clearInterval(i);
-  }, [recogida?.ultimo_ping, recogida?.estado_aprobacion]);
+  }, [recogidaActiva?.finalizado_at, recogidaActiva?.estado_aprobacion]);
 
-  // ====== REEMPLAZA LA FUNCIÓN COMPLETA PARA EVITAR ERRORES ======
   async function resolverSolicitud(accion: "aprobado" | "rechazado") {
-    if (!recogida) return;
+    if (!recogidaActiva) return;
     setVotando(true);
-
     await supabase
       .from("plan_recogida")
       .update({
         estado_aprobacion: accion,
-        aprobado_at: accion === "aprobado" ? new Date().toISOString() : null,
-        activo: accion === "aprobado" ? true : false, // En TypeScript se pone true : false limpio
+        activo: accion === "aprobado" ? true : false,
       })
-      .eq("id", recogida.id);
+      .eq("id", recogidaActiva.id);
 
     setVotando(false);
-    await cargar();
+    await cargarDatos();
   }
 
   const enVivo =
-    recogida &&
-    recogida.estado_aprobacion === "aprobado" &&
+    recogidaActiva &&
+    recogidaActiva.estado_aprobacion === "aprobado" &&
     segundosUltimoPing < 30;
-  const perdido =
-    recogida &&
-    recogida.estado_aprobacion === "aprobado" &&
-    segundosUltimoPing >= 30 &&
-    segundosUltimoPing < 300;
+  const mirandoHistorial = !!planSeleccionadoId;
 
   return (
     <main className="min-w-0 font-nunito bg-slate-50/30 min-h-screen text-xs">
@@ -233,95 +234,93 @@ export default function GpsPage() {
               nueva ? "text-orange-500 animate-bounce" : "text-gray-400"
             }
           />
-          {nueva && (
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-orange-500 rounded-full" />
-          )}
         </div>
       </div>
 
-      {/* 🚨 CANDADO INTERMEDIO: INTERFAZ DE DECISIÓN IMPERATIVA PARA EL PAPÁ */}
-      {recogida && recogida.estado_aprobacion === "esperando_aprobacion" && (
-        <div className="mx-4 lg:mx-7 mt-5 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-5 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-5 animate-fade-in border border-orange-400">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <ShieldAlert size={18} className="text-white animate-pulse" />
-              <span className="text-[10px] uppercase font-black tracking-widest bg-white/20 px-2 py-0.5 rounded-md">
-                Verificación Requerida
-              </span>
+      {/* CANDADO INTERMEDIO: EN ESPERA DE APROBACIÓN */}
+      {recogidaActiva &&
+        recogidaActiva.estado_aprobacion === "esperando_aprobacion" && (
+          <div className="mx-4 lg:mx-7 mt-5 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-5 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-5 border border-orange-400">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <ShieldAlert size={18} className="text-white animate-pulse" />
+                <span className="text-[10px] uppercase font-black tracking-widest bg-white/20 px-2 py-0.5 rounded-md">
+                  Verificación Requerida
+                </span>
+              </div>
+              <h2 className="text-base font-black tracking-tight uppercase">
+                ¿Autorizas que retiren a tu hijo?
+              </h2>
+              <div className="bg-white/10 border border-white/10 p-3 rounded-xl text-left font-sans mt-2">
+                <p className="text-[11px] font-black">
+                  {recogidaActiva.recolector_nombre}
+                </p>
+                <p className="text-[9px] text-orange-200 font-mono tracking-tight">
+                  {recogidaActiva.recolector_email}
+                </p>
+              </div>
             </div>
-            <h2 className="text-base font-black tracking-tight uppercase">
-              ¿Autorizas que retiren a tu hijo?
-            </h2>
-            <p className="text-orange-50 text-xs font-medium max-w-xl">
-              Alguien escaneó el QR en la puerta del aula. Google identificó al
-              recolector como:
-            </p>
-            <div className="bg-white/10 border border-white/10 p-3 rounded-xl text-left font-sans mt-2">
-              <p className="text-[11px] font-black">
-                {recogida.recolector_nombre}
-              </p>
-              <p className="text-[9px] text-orange-200 font-mono tracking-tight">
-                {recogida.recolector_email}
-              </p>
+            <div className="flex items-center gap-3 self-stretch md:self-center">
+              <button
+                disabled={votando}
+                onClick={() => resolverSolicitud("rechazado")}
+                className="flex-1 md:flex-initial bg-white/10 border border-white/20 px-4 py-3 rounded-xl font-black uppercase text-[10px]"
+              >
+                Denegar Permiso
+              </button>
+              <button
+                disabled={votando}
+                onClick={() => resolverSolicitud("aprobado")}
+                className="flex-1 md:flex-initial bg-white text-orange-600 px-5 py-3 rounded-xl font-black uppercase text-[10px] shadow-lg"
+              >
+                Autorizar Entrega
+              </button>
             </div>
           </div>
+        )}
 
-          <div className="flex items-center gap-3 self-stretch md:self-center">
-            <button
-              disabled={votando}
-              onClick={() => resolverSolicitud("rechazado")}
-              className="flex-1 md:flex-initial bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-3 rounded-xl font-black uppercase tracking-wider text-[10px] flex items-center justify-center gap-1.5 transition-all active:scale-95"
-            >
-              <ThumbsDown size={13} /> Denegar Permiso
-            </button>
-            <button
-              disabled={votando}
-              onClick={() => resolverSolicitud("aprobado")}
-              className="flex-1 md:flex-initial bg-white text-orange-600 px-5 py-3 rounded-xl font-black uppercase tracking-wider text-[10px] flex items-center justify-center gap-1.5 shadow-lg transition-all active:scale-95"
-            >
-              {votando ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                <ThumbsUp size={13} />
-              )}{" "}
-              Autorizar Entrega
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* CUERPO DEL DASHBOARD */}
+      {/* CUERPO CENTRAL */}
       <div className="px-4 lg:px-7 pt-5 pb-8 max-w-5xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* SECCIÓN MAPA */}
+          {/* COLUMNA MAPA */}
           <div className="lg:col-span-2 space-y-4">
-            {recogida && recogida.estado_aprobacion === "aprobado" ? (
+            {(recogidaActiva &&
+              recogidaActiva.estado_aprobacion === "aprobado") ||
+            mirandoHistorial ? (
               <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-xs">
-                {/* Header dinámico del mapa */}
+                {/* Info dinámico de barra de mapa */}
                 <div
-                  className={`px-4 py-2.5 flex items-center justify-between border-b ${enVivo ? "bg-orange-50 border-orange-100 text-orange-800" : "bg-slate-50 border-gray-100 text-gray-500"}`}
+                  className={`px-4 py-2.5 flex items-center justify-between border-b ${mirandoHistorial ? "bg-slate-900 text-white" : enVivo ? "bg-orange-50 border-orange-100 text-orange-800" : "bg-slate-50 border-gray-100 text-gray-500"}`}
                 >
                   <div className="flex items-center gap-2 font-black">
-                    {enVivo ? (
+                    {mirandoHistorial ? (
+                      <>
+                        <Navigation
+                          size={12}
+                          className="text-orange-400 rotate-45 animate-pulse"
+                        />
+                        <span>Visualizando Ruta Histórica</span>
+                      </>
+                    ) : enVivo ? (
                       <>
                         <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
                         <span>Trayecto en curso (Gps Activo)</span>
                       </>
                     ) : (
-                      <>
-                        <Square size={12} className="text-gray-400" />
-                        <span>Señal en pausa</span>
-                      </>
+                      <span>Señal en pausa</span>
                     )}
                   </div>
-                  {segundosUltimoPing < 300 && (
-                    <span className="font-mono text-[10px] opacity-70">
-                      Ping: Hace {segundosUltimoPing}s
-                    </span>
+                  {mirandoHistorial && (
+                    <button
+                      onClick={() => setPlanSeleccionadoId(null)}
+                      className="bg-white/20 hover:bg-white/30 text-white font-black text-[9px] px-2 py-0.5 rounded-lg uppercase transition-all"
+                    >
+                      Volver al presente
+                    </button>
                   )}
                 </div>
 
-                {/* Contenedor del Mapa */}
+                {/* Renderizado de Mapa */}
                 <div className="h-80 lg:h-96 bg-gray-50 relative">
                   {ubicaciones.length > 0 ? (
                     <MapaRecogida ubicaciones={ubicaciones} />
@@ -331,25 +330,22 @@ export default function GpsPage() {
                         size={20}
                         className="animate-spin text-orange-400 mb-1"
                       />
-                      <p className="font-bold">
-                        Aprobado. Esperando que salgan del aula...
-                      </p>
+                      <p className="font-bold">Generando trazo en el mapa...</p>
                     </div>
                   )}
                 </div>
 
-                {/* Datos del portador del GPS */}
                 <div className="p-4 bg-gray-50/50 border-t border-gray-100 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-xs uppercase shadow-sm">
-                      {recogida.recolector_nombre?.[0] || "U"}
+                    <div className="w-8 h-8 bg-orange-500 text-white rounded-lg flex items-center justify-center font-black text-xs uppercase">
+                      <MapPin size={14} />
                     </div>
                     <div>
-                      <p className="font-black text-gray-900">
-                        {recogida.recolector_nombre}
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                        Puntos de geolocalización indexados:
                       </p>
-                      <p className="text-[11px] text-gray-400 font-medium font-mono">
-                        {recogida.recolector_email}
+                      <p className="text-gray-900 font-black text-xs">
+                        {ubicaciones.length} coordenadas en este trayecto
                       </p>
                     </div>
                   </div>
@@ -357,59 +353,71 @@ export default function GpsPage() {
               </div>
             ) : (
               <div className="bg-white rounded-2xl border border-gray-100 border-dashed p-12 text-center flex flex-col items-center justify-center min-h-[340px] text-gray-400">
-                <MapPin
-                  size={26}
-                  className="text-orange-300 mb-2 animate-bounce"
-                />
+                <MapPin size={26} className="text-orange-300 mb-2" />
                 <h3 className="font-black text-gray-700 text-sm">
                   Sin rastreo activo en este momento
                 </h3>
-                <p className="text-[11px] text-gray-400 max-w-xs mt-1 leading-normal">
-                  Cuando la maestra genere un código QR y este sea verificado y
-                  aprobado, podrás visualizar la ruta GPS aquí en tiempo real.
+                <p className="text-[11px] text-gray-400 max-w-xs mt-1">
+                  Toca cualquier registro en tu historial de abajo para cargar y
+                  revisar el trayecto GPS exacto que se completó ese día.
                 </p>
               </div>
             )}
           </div>
 
-          {/* SECCIÓN HISTORIAL */}
+          {/* COLUMNA INTERACTIVA DEL HISTORIAL */}
           <div className="lg:col-span-1">
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">
-              Historial de Entregas Recientes
+              Historial con Trazado GPS ({historialPlanes.length})
             </p>
-            {notifs.length === 0 ? (
+            {historialPlanes.length === 0 ? (
               <div className="bg-white border border-gray-100 rounded-2xl p-6 text-center text-gray-400">
                 <BellOff size={16} className="mx-auto mb-1 text-gray-300" />
-                <p className="font-bold">Ninguna salida reportada</p>
+                <p className="font-bold">Ningún viaje histórico guardado</p>
               </div>
             ) : (
               <div className="space-y-2 max-h-[440px] overflow-y-auto pr-1">
-                {notifs.map((n) => (
-                  <div
-                    key={n.id}
-                    className="bg-white border border-gray-100 rounded-xl p-3 flex items-start gap-3 shadow-2xs"
-                  >
-                    <div className="w-8 h-8 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center shrink-0">
-                      <CheckCircle2 size={15} />
-                    </div>
-                    <div className="flex-1 min-w-0 space-y-0.5">
-                      <p className="font-black text-gray-800 text-xs truncate uppercase">
-                        {n.nombre_recogedor}
-                      </p>
-                      <div className="flex items-center gap-1 text-gray-400 font-medium font-mono text-[9px]">
-                        <Clock size={10} />
-                        <span>
-                          {new Date(n.recogido_at).toLocaleString("es-BO", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
+                {historialPlanes.map((plan) => {
+                  const esElSeleccionado = planSeleccionadoId === plan.id;
+                  return (
+                    <button
+                      key={plan.id}
+                      onClick={() =>
+                        setPlanSeleccionadoId(esElSeleccionado ? null : plan.id)
+                      }
+                      className={`w-full bg-white border rounded-xl p-3 flex items-start gap-3 text-left transition-all hover:border-orange-200 active:scale-98 ${esElSeleccionado ? "border-orange-500 ring-2 ring-orange-100" : "border-gray-100"}`}
+                    >
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${esElSeleccionado ? "bg-orange-500 text-white" : "bg-emerald-50 text-emerald-600"}`}
+                      >
+                        {esElSeleccionado ? (
+                          <Navigation size={14} className="rotate-45" />
+                        ) : (
+                          <CheckCircle2 size={15} />
+                        )}
                       </div>
-                    </div>
-                  </div>
-                ))}
+                      <div className="flex-1 min-w-0 space-y-0.5">
+                        <p className="font-black text-gray-800 text-xs truncate uppercase">
+                          {plan.recolector_nombre}
+                        </p>
+                        <div className="flex items-center gap-1 text-gray-400 font-medium font-mono text-[9px]">
+                          <Calendar size={9} />
+                          <span>
+                            {new Date(plan.created_at).toLocaleString("es-BO", {
+                              day: "numeric",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                        </div>
+                        <p className="text-[9px] text-orange-500 font-black pt-1 block uppercase">
+                          ➡️ Ver trazado de ruta
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
