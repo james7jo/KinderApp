@@ -9,7 +9,6 @@ import {
   Loader2,
   AlertCircle,
   AlertTriangle,
-  ShieldAlert,
   XCircle,
 } from "lucide-react";
 import PantallaRastreo from "./PantallaRastreo";
@@ -38,7 +37,6 @@ export default function RecogidaQRPage() {
   const [error, setError] = useState("");
 
   const verificarToken = useCallback(async () => {
-    // 🔀 Cambiado a 'plan_recogida'
     const { data, error } = await supabase
       .from("plan_recogida")
       .select(`*, alumnos(id, nombre, apellido, foto_url, cursos(nombre))`)
@@ -50,20 +48,17 @@ export default function RecogidaQRPage() {
       return;
     }
 
-    // Control de expiración inmune a desajustes de zona horaria
     if (new Date(data.expires_at) < new Date()) {
       setEstado("expirado");
       return;
     }
 
-    // Si el papá ya lo rechazó previamente
     if (data.estado_aprobacion === "rechazado") {
       setEstado("rechazado_papa");
       return;
     }
 
     if (data.estado_aprobacion === "aprobado" && data.escaneado_at) {
-      // Si ya está aprobado por el papá, salta directo a rastrear o finalizado
       setRecogida(data);
       setAlumno(data.alumnos);
 
@@ -87,7 +82,6 @@ export default function RecogidaQRPage() {
     } = await supabase.auth.getSession();
     if (session?.user) {
       setUsuario(session.user);
-      // Si ya escaneó pero el papá no ha decidido, lo mandamos a esperar
       if (data.estado_aprobacion === "esperando_aprobacion") {
         setEstado("esperando_papa");
       } else {
@@ -96,7 +90,7 @@ export default function RecogidaQRPage() {
     } else {
       setEstado("login");
     }
-  }, [token]);
+  }, [token, supabase]);
 
   useEffect(() => {
     verificarToken();
@@ -117,21 +111,21 @@ export default function RecogidaQRPage() {
     });
 
     return () => subscription.unsubscribe();
-  }, [verificarToken]);
+  }, [verificarToken, supabase.auth]);
 
-  // 🔔 CANAL EN TIEMPO REAL PARA EL CELULAR DEL RECOLECTOR
+  // ESCUCHA EN TIEMPO REAL CORRECTA PARA EL RECOLECTOR
   useEffect(() => {
     if (!recogida?.id) return;
 
     const ch = supabase
-      .channel(`recolector-espera-${recogida.id}`)
+      .channel("recolector-espera-" + recogida.id)
       .on(
         "postgres_changes",
         {
           event: "UPDATE",
           schema: "public",
           table: "plan_recogida",
-          filter: `id=eq.${recogida.id}`,
+          filter: "id=eq." + recogida.id,
         },
         (payload: any) => {
           const actualizado = payload.new;
@@ -149,7 +143,7 @@ export default function RecogidaQRPage() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [recogida?.id]);
+  }, [recogida?.id, supabase]);
 
   async function loginGoogle() {
     setEstado("autenticando");
@@ -177,7 +171,6 @@ export default function RecogidaQRPage() {
           usuario?.user_metadata?.full_name ?? usuario?.email ?? "Desconocido";
         const correo = usuario?.email ?? "";
 
-        // 🔀 Modificado a 'plan_recogida' y activa el candado del papá
         await supabase
           .from("plan_recogida")
           .update({
@@ -186,7 +179,7 @@ export default function RecogidaQRPage() {
             latitud: pos.coords.latitude,
             longitud: pos.coords.longitude,
             escaneado_at: new Date().toISOString(),
-            estado_aprobacion: "esperando_aprobacion", // <-- Activa la alerta del papá
+            estado_aprobacion: "esperando_aprobacion",
           })
           .eq("token", token);
 
@@ -222,7 +215,6 @@ export default function RecogidaQRPage() {
       </div>
     );
 
-  // 🚨 NUEVA VISTA: ESPERANDO QUE EL PAPÁ PRESIONE EL BOTÓN EN SU CASA
   if (estado === "esperando_papa")
     return (
       <div className="min-h-screen bg-gradient-to-b from-amber-500 to-orange-600 flex flex-col items-center justify-center font-nunito px-6 text-center text-white">
@@ -243,7 +235,6 @@ export default function RecogidaQRPage() {
       </div>
     );
 
-  // 🚨 NUEVA VISTA: EL PAPÁ RECHAZÓ AL RECOLECTOR
   if (estado === "rechazado_papa")
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center font-nunito px-6 text-center">
@@ -257,8 +248,9 @@ export default function RecogidaQRPage() {
           Acceso Bloqueado por Seguridad
         </p>
         <p className="text-gray-400 text-xs max-w-xs leading-relaxed">
-          El tutor legal del alumno ha cancelado este permiso de recogida. Por
-          favor, comunícate directamente con los padres o la dirección escolar.
+          El tutor legal del alumno ha cancelado este permission de recogida.
+          Por favor, comunícate directamente con los padres o la dirección
+          escolar.
         </p>
       </div>
     );
@@ -312,7 +304,6 @@ export default function RecogidaQRPage() {
           </p>
         </div>
 
-        {/* PASO 1: LOGIN GOOGLE */}
         {(estado === "login" || estado === "autenticando") && (
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 text-center">
@@ -336,7 +327,6 @@ export default function RecogidaQRPage() {
           </div>
         )}
 
-        {/* PASO 2: SOLICITUD DE RASTREO */}
         {estado === "permisos" && usuario && (
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
             <div className="flex items-center gap-3 bg-green-50 border border-green-100 rounded-xl p-3 mb-4">
@@ -350,7 +340,6 @@ export default function RecogidaQRPage() {
               </div>
               <CheckCircle2 size={16} className="text-green-500 shrink-0" />
             </div>
-
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 text-center">
               Paso 2 — Validar Candado GPS
             </p>
@@ -358,7 +347,6 @@ export default function RecogidaQRPage() {
               Compartí tu ubicación inicial. No podrás retirar al niño hasta que
               el papá apruebe la entrega desde su terminal.
             </p>
-
             <button
               onClick={activarRastreo}
               className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-xl text-xs uppercase flex items-center justify-center gap-2 shadow-md shadow-orange-200"
