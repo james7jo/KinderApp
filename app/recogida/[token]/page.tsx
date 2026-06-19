@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -8,6 +9,8 @@ import {
   Loader2,
   AlertCircle,
   AlertTriangle,
+  ShieldAlert,
+  XCircle,
 } from "lucide-react";
 import PantallaRastreo from "./PantallaRastreo";
 
@@ -18,6 +21,8 @@ type Estado =
   | "finalizado"
   | "login"
   | "autenticando"
+  | "esperando_papa" // Nuevo estado del candado
+  | "rechazado_papa" // Nuevo estado de denegación
   | "permisos"
   | "rastreando";
 
@@ -32,11 +37,74 @@ export default function RecogidaQRPage() {
   const [usuario, setUsuario] = useState<any>(null);
   const [error, setError] = useState("");
 
+  const verificarToken = useCallback(async () => {
+    // 🔀 Cambiado a 'plan_recogida'
+    const { data, error } = await supabase
+      .from("plan_recogida")
+      .select(`*, alumnos(id, nombre, apellido, foto_url, cursos(nombre))`)
+      .eq("token", token)
+      .single();
+
+    if (error || !data || !data.activo) {
+      setEstado("expirado");
+      return;
+    }
+
+    // Control de expiración inmune a desajustes de zona horaria
+    if (new Date(data.expires_at) < new Date()) {
+      setEstado("expirado");
+      return;
+    }
+
+    // Si el papá ya lo rechazó previamente
+    if (data.estado_aprobacion === "rechazado") {
+      setEstado("rechazado_papa");
+      return;
+    }
+
+    if (data.estado_aprobacion === "aprobado" && data.escaneado_at) {
+      // Si ya está aprobado por el papá, salta directo a rastrear o finalizado
+      setRecogida(data);
+      setAlumno(data.alumnos);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUsuario(session.user);
+        setEstado(data.finalizado ? "finalizado" : "rastreando");
+      } else {
+        setEstado("login");
+      }
+      return;
+    }
+
+    setRecogida(data);
+    setAlumno(data.alumnos);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session?.user) {
+      setUsuario(session.user);
+      // Si ya escaneó pero el papá no ha decidido, lo mandamos a esperar
+      if (data.estado_aprobacion === "esperando_aprobacion") {
+        setEstado("esperando_papa");
+      } else {
+        setEstado("permisos");
+      }
+    } else {
+      setEstado("login");
+    }
+  }, [token]);
+
   useEffect(() => {
     verificarToken();
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) setUsuario(session.user);
     });
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_, session) => {
@@ -47,54 +115,41 @@ export default function RecogidaQRPage() {
         );
       }
     });
+
     return () => subscription.unsubscribe();
-  }, []);
+  }, [verificarToken]);
 
-  async function verificarToken() {
-    const { data, error } = await supabase
-      .from("recogidas_qr")
-      .select(`*, alumnos(id, nombre, apellido, foto_url, cursos(nombre))`)
-      .eq("token", token)
-      .single();
+  // 🔔 CANAL EN TIEMPO REAL PARA EL CELULAR DEL RECOLECTOR
+  useEffect(() => {
+    if (!recogida?.id) return;
 
-    if (error || !data || !data.activo) {
-      setEstado("expirado");
-      return;
-    }
-    if (new Date(data.expires_at) < new Date()) {
-      setEstado("expirado");
-      return;
-    }
-    if (data.finalizado) {
-      setEstado("finalizado");
-      setAlumno(data.alumnos);
-      return;
-    }
+    const ch = supabase
+      .channel(`recolector-espera-${recogida.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "plan_recogida",
+          filter: `id=eq.${recogida.id}`,
+        },
+        (payload: any) => {
+          const actualizado = payload.new;
+          setRecogida(actualizado);
 
-    if (data.escaneado_at) {
-      const ultimoPing = data.ultimo_ping ? new Date(data.ultimo_ping) : null;
-      const segundosSinPing = ultimoPing
-        ? (Date.now() - ultimoPing.getTime()) / 1000
-        : 999;
-      if (segundosSinPing < 60) {
-        setEstado("ya_escaneado");
-        setAlumno(data.alumnos);
-        return;
-      }
-    }
+          if (actualizado.estado_aprobacion === "aprobado") {
+            setEstado("rastreando");
+          } else if (actualizado.estado_aprobacion === "rechazado") {
+            setEstado("rechazado_papa");
+          }
+        },
+      )
+      .subscribe();
 
-    setRecogida(data);
-    setAlumno(data.alumnos);
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (session?.user) {
-      setUsuario(session.user);
-      setEstado("permisos");
-    } else {
-      setEstado("login");
-    }
-  }
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [recogida?.id]);
 
   async function loginGoogle() {
     setEstado("autenticando");
@@ -122,34 +177,20 @@ export default function RecogidaQRPage() {
           usuario?.user_metadata?.full_name ?? usuario?.email ?? "Desconocido";
         const correo = usuario?.email ?? "";
 
+        // 🔀 Modificado a 'plan_recogida' y activa el candado del papá
         await supabase
-          .from("recogidas_qr")
+          .from("plan_recogida")
           .update({
-            nombre_recogedor: nombre,
-            correo_recogedor: correo,
+            recolector_nombre: nombre,
+            recolector_email: correo,
             latitud: pos.coords.latitude,
             longitud: pos.coords.longitude,
             escaneado_at: new Date().toISOString(),
-            ultimo_ping: new Date().toISOString(),
+            estado_aprobacion: "esperando_aprobacion", // <-- Activa la alerta del papá
           })
           .eq("token", token);
 
-        await supabase.from("notificaciones_recogida").insert({
-          alumno_id: alumno.id,
-          nombre_recogedor: nombre,
-          correo_recogedor: correo,
-          latitud: pos.coords.latitude,
-          longitud: pos.coords.longitude,
-          recogido_at: new Date().toISOString(),
-        });
-
-        const { data: refreshed } = await supabase
-          .from("recogidas_qr")
-          .select("*")
-          .eq("token", token)
-          .single();
-        if (refreshed) setRecogida(refreshed);
-        setEstado("rastreando");
+        setEstado("esperando_papa");
       },
       () =>
         setError(
@@ -172,22 +213,52 @@ export default function RecogidaQRPage() {
         <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mb-5">
           <AlertCircle size={36} className="text-red-400" />
         </div>
-        <h1 className="font-black text-gray-900 text-2xl mb-2">QR expirado</h1>
+        <h1 className="font-black text-gray-900 text-2xl mb-2">
+          QR inválido o expirado
+        </h1>
         <p className="text-gray-400 text-sm max-w-xs">
-          Pedile a la maestra que genere uno nuevo.
+          Pedile a la maestra que genere un código nuevo en la puerta.
         </p>
       </div>
     );
 
-  if (estado === "ya_escaneado")
+  // 🚨 NUEVA VISTA: ESPERANDO QUE EL PAPÁ PRESIONE EL BOTÓN EN SU CASA
+  if (estado === "esperando_papa")
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-amber-500 to-orange-600 flex flex-col items-center justify-center font-nunito px-6 text-center text-white">
+        <div className="w-20 h-20 bg-white/20 rounded-3xl flex items-center justify-center mb-5 border border-white/20 animate-pulse">
+          <Loader2 size={36} className="text-white animate-spin" />
+        </div>
+        <span className="bg-white/20 text-white font-black text-[10px] px-3 py-1 rounded-full uppercase tracking-wider">
+          Esperando Confirmación
+        </span>
+        <h1 className="font-black text-2xl mt-4 mb-2">
+          Solicitud Enviada al Tutor
+        </h1>
+        <p className="text-orange-100 text-xs max-w-xs leading-relaxed">
+          Tus datos de Google y GPS inicial fueron enviados al teléfono del
+          papá. Mantené esta pantalla abierta hasta que autorice tu salida del
+          Kínder.
+        </p>
+      </div>
+    );
+
+  // 🚨 NUEVA VISTA: EL PAPÁ RECHAZÓ AL RECOLECTOR
+  if (estado === "rechazado_papa")
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center font-nunito px-6 text-center">
-        <div className="w-20 h-20 bg-amber-50 rounded-3xl flex items-center justify-center mb-5">
-          <AlertTriangle size={36} className="text-amber-500" />
+        <div className="w-20 h-20 bg-red-100 rounded-3xl flex items-center justify-center mb-5 border border-red-200">
+          <XCircle size={40} className="text-red-600" />
         </div>
-        <h1 className="font-black text-gray-900 text-2xl mb-2">QR ya activo</h1>
-        <p className="text-gray-400 text-sm max-w-xs leading-relaxed">
-          Este código ya está siendo usado en otro dispositivo.
+        <h1 className="font-black text-gray-900 text-xl mb-1">
+          Retiro Denegado
+        </h1>
+        <p className="text-red-600 font-bold text-xs uppercase tracking-wider mb-3">
+          Acceso Bloqueado por Seguridad
+        </p>
+        <p className="text-gray-400 text-xs max-w-xs leading-relaxed">
+          El tutor legal del alumno ha cancelado este permiso de recogida. Por
+          favor, comunícate directamente con los padres o la dirección escolar.
         </p>
       </div>
     );
@@ -239,74 +310,41 @@ export default function RecogidaQRPage() {
           <p className="text-orange-100 text-sm mt-1">
             {alumno?.cursos?.nombre}
           </p>
-          <div className="mt-3 bg-white/20 rounded-xl px-4 py-2">
-            <p className="text-white text-xs font-bold">Recogida en curso</p>
-          </div>
         </div>
 
+        {/* PASO 1: LOGIN GOOGLE */}
         {(estado === "login" || estado === "autenticando") && (
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 text-center">
               Paso 1 — Identificate
             </p>
-            <p className="text-sm text-gray-600 text-center mb-5 font-medium leading-relaxed">
-              Iniciá sesión con Google para que los papás sepan quién recoge al
-              niño
+            <p className="text-xs text-gray-500 text-center mb-5 font-medium leading-relaxed">
+              Iniciá sesión con Google para enviar una solicitud formal de
+              retiro al panel del tutor legal.
             </p>
             <button
               onClick={loginGoogle}
               disabled={estado === "autenticando"}
-              className="w-full bg-white border-2 border-gray-200 hover:border-orange-300 rounded-xl py-3.5 flex items-center justify-center gap-3 transition-all active:scale-95 font-black text-gray-700 hover:text-orange-600 shadow-sm"
+              className="w-full bg-white border-2 border-gray-200 hover:border-orange-300 rounded-xl py-3.5 flex items-center justify-center gap-3 font-black text-gray-700 text-xs uppercase"
             >
               {estado === "autenticando" ? (
-                <Loader2 size={20} className="animate-spin text-orange-500" />
+                <Loader2 size={16} className="animate-spin text-orange-500" />
               ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24">
-                  <path
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    fill="#4285F4"
-                  />
-                  <path
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    fill="#34A853"
-                  />
-                  <path
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                    fill="#FBBC05"
-                  />
-                  <path
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    fill="#EA4335"
-                  />
-                </svg>
+                "Continuar con Google"
               )}
-              {estado === "autenticando"
-                ? "Conectando..."
-                : "Continuar con Google"}
             </button>
-            {error && (
-              <p className="text-red-500 text-xs font-bold text-center mt-3">
-                {error}
-              </p>
-            )}
           </div>
         )}
 
+        {/* PASO 2: SOLICITUD DE RASTREO */}
         {estado === "permisos" && usuario && (
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
             <div className="flex items-center gap-3 bg-green-50 border border-green-100 rounded-xl p-3 mb-4">
-              {usuario.user_metadata?.avatar_url && (
-                <img
-                  src={usuario.user_metadata.avatar_url}
-                  alt=""
-                  className="w-8 h-8 rounded-full"
-                />
-              )}
               <div className="flex-1 min-w-0">
-                <p className="font-black text-green-800 text-sm truncate">
+                <p className="font-black text-green-800 text-xs truncate">
                   {usuario.user_metadata?.full_name ?? usuario.email}
                 </p>
-                <p className="text-green-600 text-xs truncate">
+                <p className="text-green-600 text-[10px] truncate">
                   {usuario.email}
                 </p>
               </div>
@@ -314,27 +352,19 @@ export default function RecogidaQRPage() {
             </div>
 
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 text-center">
-              Paso 2 — Activar GPS
+              Paso 2 — Validar Candado GPS
             </p>
-            <p className="text-sm text-gray-600 text-center mb-5 font-medium leading-relaxed">
-              Compartí tu ubicación en tiempo real con los papás durante todo el
-              trayecto
+            <p className="text-xs text-gray-500 text-center mb-5 font-medium leading-relaxed">
+              Compartí tu ubicación inicial. No podrás retirar al niño hasta que
+              el papá apruebe la entrega desde su terminal.
             </p>
 
             <button
               onClick={activarRastreo}
-              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-xl transition-all active:scale-95 shadow-sm shadow-orange-200 flex items-center justify-center gap-2"
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-xl text-xs uppercase flex items-center justify-center gap-2 shadow-md shadow-orange-200"
             >
-              <MapPin size={18} /> Iniciar rastreo GPS
+              <MapPin size={16} /> Solicitar Autorización y Vincular GPS
             </button>
-            {error && (
-              <p className="text-red-500 text-xs font-bold text-center mt-3">
-                {error}
-              </p>
-            )}
-            <p className="text-[10px] text-gray-400 text-center mt-3 font-medium leading-relaxed">
-              Mantené esta pantalla abierta durante el trayecto.
-            </p>
           </div>
         )}
       </div>

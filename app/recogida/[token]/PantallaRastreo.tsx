@@ -5,10 +5,8 @@ import {
   MapPin,
   CheckCircle2,
   AlertTriangle,
-  Battery,
   Wifi,
   Loader2,
-  X,
 } from "lucide-react";
 
 type Props = {
@@ -42,7 +40,7 @@ export default function PantallaRastreo({
   const [finalizando, setFinalizando] = useState(false);
   const [finalizado, setFinalizado] = useState(false);
 
-  // ── Wake Lock — mantener pantalla encendida ──
+  // Wake Lock — Pantalla siempre activa
   useEffect(() => {
     async function pedirWakeLock() {
       try {
@@ -57,11 +55,9 @@ export default function PantallaRastreo({
     }
     pedirWakeLock();
 
-    // Re-pedir wake lock si se libera
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && !wakeLockRef.current) {
+      if (document.visibilityState === "visible" && !wakeLockRef.current)
         pedirWakeLock();
-      }
       setPausado(document.visibilityState === "hidden");
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -72,14 +68,12 @@ export default function PantallaRastreo({
     };
   }, []);
 
-  // ── Contador de tiempo activo ──
   useEffect(() => {
     if (finalizado) return;
     const i = setInterval(() => setTiempoActivo((t) => t + 1), 1000);
     return () => clearInterval(i);
   }, [finalizado]);
 
-  // ── Conexión a internet ──
   useEffect(() => {
     const handleOnline = () => setConectado(true);
     const handleOffline = () => setConectado(false);
@@ -92,10 +86,9 @@ export default function PantallaRastreo({
     };
   }, []);
 
-  // ── GPS continuo con watchPosition ──
+  // WATCH POSITION: PING CONTINUO DIRECTO AL JSONB DE 'PLAN_RECOGIDA'
   useEffect(() => {
     if (finalizado) {
-      // Limpiar watchPosition al finalizar
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
@@ -110,38 +103,54 @@ export default function PantallaRastreo({
     watchIdRef.current = navigator.geolocation.watchPosition(
       async (pos) => {
         const ahora = Date.now();
-        // Enviar máximo cada 5 segundos
+        // Envío optimizado cada 5 segundos para cuidar rendimiento y batería
         if (ahora - ultimoEnvioRef.current < 5000) return;
         ultimoEnvioRef.current = ahora;
 
-        const punto = {
+        const nuevoPunto = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
+          time: new Date().toISOString(),
         };
-        setUltimaPos(punto);
-
-        // Insertar ubicación
-        const { error } = await supabase.from("ubicaciones").insert({
-          recogida_id: recogidaId,
-          lat: punto.lat,
-          lng: punto.lng,
-          accuracy: punto.accuracy,
+        setUltimaPos({
+          lat: nuevoPunto.lat,
+          lng: nuevoPunto.lng,
+          accuracy: pos.coords.accuracy,
         });
 
-        if (!error) {
-          // Actualizar último ping
-          await supabase
-            .from("recogidas_qr")
-            .update({ ultimo_ping: new Date().toISOString() })
+        try {
+          // 1. Jalamos el historial actual acumulado de la columna JSONB
+          const { data: actual } = await supabase
+            .from("plan_recogida")
+            .select("recorrido_gps_historial")
+            .eq("id", recogidaId)
+            .single();
+
+          const historialPrevio = Array.isArray(actual?.recorrido_gps_historial)
+            ? actual.recorrido_gps_historial
+            : [];
+
+          // 2. Insertamos el punto concatenándolo al arreglo JSONB e impactando el updated_at (Realtime del papá)
+          const { error: errUpdate } = await supabase
+            .from("plan_recogida")
+            .update({
+              latitud: nuevoPunto.lat,
+              longitud: nuevoPunto.lng,
+              recorrido_gps_historial: [...historialPrevio, nuevoPunto], // Inyección limpia estructurada
+            })
             .eq("id", recogidaId);
-          setPuntosEnviados((p) => p + 1);
+
+          if (!errUpdate) {
+            setPuntosEnviados((p) => p + 1);
+          }
+        } catch (e) {
+          console.error("Error sincronizando telemetría GPS:", e);
         }
       },
       (err) => {
         if (err.code === 1) setError("Permiso de ubicación denegado");
         else if (err.code === 2) setError("Ubicación no disponible");
-        else if (err.code === 3) setError("Timeout — intentando de nuevo");
+        else if (err.code === 3) setError("Timeout GPS");
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
     );
@@ -152,20 +161,30 @@ export default function PantallaRastreo({
     };
   }, [recogidaId, finalizado]);
 
-  // ── Finalizar recogida ──
+  // FINALIZAR RECOGIDA
   async function finalizar() {
-    if (!confirm("¿Confirmás que ya entregaste al niño?")) return;
+    if (!confirm("¿Confirmás que ya entregaste al niño en su casa?")) return;
     setFinalizando(true);
 
+    // 1. Almacenamos la alerta oficial inmutable en la tabla de notificaciones históricas
+    await supabase.from("notificaciones_recogida").insert({
+      alumno_id: alumno.id,
+      nombre_recogedor: usuario?.user_metadata?.full_name ?? usuario?.email,
+      correo_recogedor: usuario?.email,
+      latitud: ultimaPos?.lat || null,
+      longitud: ultimaPos?.lng || null,
+      recogido_at: new Date().toISOString(),
+    });
+
+    // 2. Apagamos el plan de recogida unificado
     await supabase
-      .from("recogidas_qr")
+      .from("plan_recogida")
       .update({
-        finalizado: true,
-        finalizado_at: new Date().toISOString(),
+        activo: false, // Se cierra el proceso
+        escaneado_at: new Date().toISOString(), // Congela la hora de llegada
       })
       .eq("id", recogidaId);
 
-    // Limpiar TODO antes de marcar finalizado
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -195,10 +214,14 @@ export default function PantallaRastreo({
           {alumno?.nombre} fue entregado correctamente
         </p>
         <div className="bg-white/20 rounded-2xl px-5 py-3">
-          <p className="text-xs font-bold text-green-100">Tiempo total</p>
+          <p className="text-xs font-bold text-green-100">
+            Tiempo total de viaje
+          </p>
           <p className="text-2xl font-black">{formatTiempo(tiempoActivo)}</p>
         </div>
-        <p className="text-white/70 text-xs mt-8">Podés cerrar la página</p>
+        <p className="text-white/70 text-xs mt-8">
+          Podés cerrar la página de forma segura.
+        </p>
       </div>
     );
 
@@ -207,7 +230,6 @@ export default function PantallaRastreo({
       className="min-h-screen bg-gradient-to-b from-orange-500 to-orange-600 font-nunito flex flex-col text-white"
       style={{ minHeight: "100dvh" }}
     >
-      {/* Header con info */}
       <div className="px-5 pt-6 pb-4">
         <div className="flex items-center gap-3 mb-4">
           {alumno?.foto_url ? (
@@ -222,92 +244,75 @@ export default function PantallaRastreo({
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-orange-100 text-xs font-bold uppercase tracking-widest">
-              Trasladando a
+            <p className="text-orange-100 text-[10px] font-bold uppercase tracking-widest">
+              Trasladando de forma segura a
             </p>
-            <p className="font-black text-lg leading-tight truncate">
+            <p className="font-black text-base truncate">
               {alumno?.nombre} {alumno?.apellido}
             </p>
           </div>
         </div>
-
-        {/* Indicadores de estado */}
         <div className="flex gap-2">
           <div
-            className={`flex items-center gap-1.5 backdrop-blur-sm rounded-full px-3 py-1.5 ${
-              conectado ? "bg-white/20" : "bg-red-500/40"
-            }`}
+            className={`flex items-center gap-1.5 backdrop-blur-sm rounded-full px-3 py-1 ${conectado ? "bg-white/20" : "bg-red-500/40"}`}
           >
-            <Wifi size={12} />
+            <Wifi size={12} />{" "}
             <span className="text-[11px] font-bold">
-              {conectado ? "Conectado" : "Sin internet"}
+              {conectado ? "Transmitiendo" : "Sin internet"}
             </span>
           </div>
           {pausado && (
-            <div className="flex items-center gap-1.5 bg-red-500/40 backdrop-blur-sm rounded-full px-3 py-1.5">
-              <AlertTriangle size={12} />
-              <span className="text-[11px] font-bold">Pantalla oculta</span>
+            <div className="flex items-center gap-1.5 bg-red-500/40 backdrop-blur-sm rounded-full px-3 py-1">
+              <AlertTriangle size={12} />{" "}
+              <span className="text-[11px] font-bold">Pantalla bloqueada</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Centro — Estado en vivo */}
       <div className="flex-1 flex flex-col items-center justify-center px-5 -mt-4">
         <div className="relative mb-6">
-          {/* Pulso animado */}
           <div className="absolute inset-0 bg-white/20 rounded-full animate-ping" />
-          <div className="absolute inset-0 bg-white/30 rounded-full animate-pulse" />
-          <div className="relative w-32 h-32 bg-white rounded-full flex items-center justify-center shadow-2xl">
-            <MapPin size={48} className="text-orange-500" />
+          <div className="relative w-28 h-28 bg-white rounded-full flex items-center justify-center shadow-2xl">
+            <MapPin size={40} className="text-orange-500" />
           </div>
         </div>
-
-        <p className="text-orange-100 text-xs font-bold uppercase tracking-widest mb-2">
-          {ultimaPos ? "Compartiendo ubicación" : "Obteniendo ubicación..."}
+        <p className="text-orange-100 text-[10px] font-bold uppercase tracking-widest mb-1">
+          {ultimaPos
+            ? "Señal satelital vinculada"
+            : "Sincronizando satélites..."}
         </p>
         <p className="font-black text-3xl mb-1">{formatTiempo(tiempoActivo)}</p>
-        <p className="text-orange-100 text-sm">
-          {puntosEnviados}{" "}
-          {puntosEnviados === 1 ? "punto enviado" : "puntos enviados"}
+        <p className="text-orange-100 text-xs">
+          {puntosEnviados} ubicaciones enviadas en vivo
         </p>
-
         {error && (
-          <div className="mt-6 bg-red-500/40 backdrop-blur-sm rounded-xl px-4 py-3 max-w-xs">
-            <p className="text-sm font-bold text-center">{error}</p>
+          <div className="mt-4 bg-red-500/40 backdrop-blur-sm rounded-xl px-4 py-2 text-xs font-bold text-center max-w-xs">
+            {error}
           </div>
         )}
       </div>
 
-      {/* Footer — botón finalizar */}
       <div className="px-5 pb-8 pt-4">
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 mb-4">
-          <p className="text-[10px] font-black text-orange-100 uppercase tracking-widest mb-1">
-            Identificado como
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-3.5 mb-4">
+          <p className="text-[9px] font-black text-orange-100 uppercase tracking-widest">
+            Responsable del menor
           </p>
-          <p className="text-sm font-bold truncate">
+          <p className="text-xs font-bold truncate">
             {usuario?.user_metadata?.full_name ?? usuario?.email}
           </p>
         </div>
-
         <button
           onClick={finalizar}
           disabled={finalizando}
-          className="w-full bg-white text-orange-600 font-black py-5 rounded-2xl transition-all active:scale-95 shadow-xl flex items-center justify-center gap-2 disabled:opacity-50"
+          className="w-full bg-white text-orange-600 font-black py-4 rounded-2xl tracking-wider uppercase text-xs shadow-xl flex items-center justify-center gap-2"
         >
           {finalizando ? (
-            <>
-              <Loader2 size={20} className="animate-spin" /> Finalizando...
-            </>
+            <Loader2 size={16} className="animate-spin" />
           ) : (
-            <>
-              <CheckCircle2 size={20} /> Llegué al destino
-            </>
+            "✓ Llegué a destino / Entregar menor"
           )}
         </button>
-        <p className="text-orange-100 text-[10px] text-center mt-3 font-medium">
-          Tocá cuando hayas entregado al niño para finalizar el rastreo
-        </p>
       </div>
     </div>
   );
