@@ -611,7 +611,7 @@ export default function RecogidaMaestraPage() {
       {qrModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-orange-50">
-            {/* ESTADO 1: PENDIENTE (Nadie ha escaneado aún) */}
+            {/* 🚨 BUSCA ESTE BLOQUE EN EL MODAL 'PENDIENTE' DE LA MAESTRA */}
             {qrModal.recogida.estado_aprobacion === "pendiente" && (
               <>
                 <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-5 text-white flex justify-between items-center">
@@ -644,6 +644,25 @@ export default function RecogidaMaestraPage() {
                     Al escanear, el tercero iniciará sesión con Google y le
                     mandará su perfil y GPS al papá.
                   </p>
+
+                  {/* 🛠️ PEGA ESTE BOTÓN AQUÍ ADENTRO: */}
+                  <button
+                    onClick={() => {
+                      // Llama a la función que ya limpia la base de datos y crea un registro nuevo activo
+                      generarQR(qrModal.alumno);
+                    }}
+                    className="mt-4 flex items-center gap-2 text-[11px] font-black text-orange-500 bg-orange-50 hover:bg-orange-100 px-4 py-2 rounded-xl transition-all uppercase tracking-wider"
+                  >
+                    <RefreshCw
+                      size={12}
+                      className={
+                        generando === qrModal.alumno.id ? "animate-spin" : ""
+                      }
+                    />
+                    {generando === qrModal.alumno.id
+                      ? "Generando..."
+                      : "Generar nuevo QR"}
+                  </button>
                 </div>
               </>
             )}
